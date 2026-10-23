@@ -1,0 +1,15 @@
+# Build output / caches
+build/
+dist/
+__pycache__/
+*.pyc
+*.spec.bak
+# Secrets - never commit
+.env
+.env.*
+*.key
+*.pem
+secrets*.json
+*credentials*
+# Machine-local
+*.log
