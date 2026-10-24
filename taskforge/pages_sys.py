@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDialo
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
                              QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from . import __version__, power, sysinfo
+from . import __version__, editions, power, sysinfo
 from .themes import THEMES
 from .util import app_data_dir, backup_dir, fmt_bytes, is_admin, open_path
 from .widgets import bar, confirm, explain, page_header, run_async
@@ -244,6 +244,10 @@ class CpuPage(QWidget):
         self.status(f"Power settings applied ({note}). Backup: {os.path.basename(bpath)}")
 
     def apply_preset(self, name):
+        if not editions.can("advanced"):
+            QMessageBox.information(self, "Edition feature",
+                                    "CPU presets require Free with Ads or an activated Supporter/Pro edition.")
+            return
         p = power.PRESETS[name]
         vals = {k: v for k, v in p["values"].items() if self.controls[k][1][0].isEnabled()}
         lines = "\n".join(f"  • {power.SETTING_BY_KEY[k][2]}: {self._fmt(k, v)}" for k, v in vals.items())
@@ -252,6 +256,10 @@ class CpuPage(QWidget):
             self._apply(vals, vals, f"preset {name}")
 
     def apply_manual(self):
+        if not editions.can("advanced"):
+            QMessageBox.information(self, "Edition feature",
+                                    "Advanced CPU tuning requires Free with Ads or an activated Supporter/Pro edition.")
+            return
         ac, dc = self._current_values()
         old = getattr(self, "loaded", {})
         diff = [f"  • {power.SETTING_BY_KEY[k][2]}: {self._fmt(k, old[k][0])}/{self._fmt(k, old[k][1])} → "
@@ -588,8 +596,9 @@ class SettingsPage(QWidget):
 
             dg = QGroupBox("Data & privacy")
             dl = QVBoxLayout(dg)
-            dl.addWidget(explain(f"Settings and change backups are stored locally in {app_data_dir()}. TaskForge makes "
-                                 "no network requests, needs no API keys and sends no telemetry."))
+            dl.addWidget(explain(f"Settings and change backups are stored locally in {app_data_dir()}. TaskForge sends "
+                                 "no telemetry. Paid editions contact Gumroad only when Activate is clicked; Free with "
+                                 "Ads opens disclosed affiliate pages only after an explicit click."))
             ob = QPushButton("Open backups folder")
             ob.clicked.connect(lambda: open_path(backup_dir()))
             dl.addWidget(ob, 0, Qt.AlignmentFlag.AlignLeft)

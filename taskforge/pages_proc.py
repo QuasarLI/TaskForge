@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QDialogButto
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
                              QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from . import procman
+from . import editions, procman
 from .procman import OpError
 from .util import fmt_bytes
 from .widgets import MetricCard, NumItem, bar, confirm, explain, page_header
@@ -309,6 +309,11 @@ class ProcessesPage(QWidget):
             self._do(lambda: procman.set_efficiency_mode(pid, en), f"Efficiency mode {'on' if en else 'off'}: {name}")
 
     def set_priority(self, cls, label):
+        if not editions.can("pro"):
+            QMessageBox.information(self, "Pro feature",
+                                    "Priority controls are a Pro feature. Efficiency mode and core process safety "
+                                    "remain available in every edition.")
+            return
         pid, name = self._target()
         if pid is None:
             return

@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller pillow
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Safe UI self-test
+        run: python run.py --selftest
+      - name: Build all editions
+        shell: powershell
+        run: ./build.ps1
+      - name: Stage public editions only
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force public | Out-Null
+          Copy-Item dist/TaskForge-2.1.0/TaskForge-2.1.0-Free.exe public/
+          Copy-Item dist/TaskForge-2.1.0/TaskForge-2.1.0-Free-with-Ads.exe public/
+          Get-FileHash public/*.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
+            Set-Content -Encoding ASCII public/SHA256SUMS.txt
+      - uses: sigstore/cosign-installer@v3
+      - name: Keyless Sigstore bundles
+        shell: powershell
+        run: |
+          Get-ChildItem public/*.exe | ForEach-Object {
+            cosign sign-blob --yes --bundle "$($_.FullName).sigstore.json" $_.FullName
+          }
+      - name: Attest public binaries
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "public/*.exe"
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" public/* --verify-tag --generate-notes --title "TaskForge ${{ github.ref_name }}"

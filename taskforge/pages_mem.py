@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QButtonGroup, QComboBox, QGridLa
                              QHeaderView, QLabel, QMessageBox, QPushButton, QRadioButton, QScrollArea, QSpinBox,
                              QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from . import pagefile, procman
+from . import editions, pagefile, procman
 from .procman import OpError
 from .util import fmt_bytes, is_admin
 from .widgets import NumItem, bar, confirm, explain, page_header
@@ -250,6 +250,10 @@ class MemoryPage(QWidget):
                     + ("" if ok == len(pids) else " (others need admin)"))
 
     def trim_all(self):
+        if not editions.can("advanced"):
+            QMessageBox.information(self, "Edition feature",
+                                    "Bulk background trimming requires Free with Ads or Supporter/Pro.")
+            return
         if not confirm(self, "Trim background apps",
                        "Trim the working sets of all processes except TaskForge and the app you're focused on?\n\n"
                        "Free RAM will jump, but apps will briefly page memory back in when used. This is safe "
@@ -305,6 +309,11 @@ class MemoryPage(QWidget):
             self.max_mb.setValue(reco[1])
 
     def apply_pagefile(self):
+        if not editions.can("advanced"):
+            QMessageBox.information(self, "Edition feature",
+                                    "Custom pagefile changes require Free with Ads or Supporter/Pro. "
+                                    "Monitoring, recommendations, Windows' dialog, backups, and restore remain free.")
+            return
         if not is_admin():
             QMessageBox.warning(self, "Administrator required",
                                 "Changing the pagefile requires administrator rights. Use “Restart as admin” in the header.")

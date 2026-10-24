@@ -19,6 +19,18 @@ THEMES = {
     "Arctic Light": dict(bg="#f4f6fb", panel="#ffffff", card="#ffffff", border="#d9dfeb", text="#1b2333",
                          muted="#64708a", accent="#4f46e5", accent2="#0891b2", hover="#eef1f8",
                          danger="#dc2626", ok="#16a34a", warn="#d97706", sel="#dfe3ff"),
+    "Cyber Ocean": dict(bg="#06121b", panel="#0a1d2a", card="#0c2433", border="#174158", text="#e2f7ff",
+                        muted="#76aabd", accent="#00b8d9", accent2="#2dd4bf", hover="#123246",
+                        danger="#fb7185", ok="#34d399", warn="#fbbf24", sel="#0c4a6e"),
+    "Solarized Dusk": dict(bg="#171a21", panel="#20242d", card="#272c36", border="#3c4350", text="#f2e9d8",
+                           muted="#aaa18e", accent="#e6a15c", accent2="#6dc5c3", hover="#303642",
+                           danger="#e06c75", ok="#98c379", warn="#e5c07b", sel="#5a402c"),
+    "Royal Amethyst": dict(bg="#130d20", panel="#1d1430", card="#25193b", border="#493568", text="#f5edff",
+                           muted="#ad94c9", accent="#c084fc", accent2="#f472b6", hover="#332249",
+                           danger="#fb7185", ok="#86efac", warn="#fde047", sel="#563079"),
+    "Slate Professional": dict(bg="#161b22", panel="#1f2630", card="#252e3a", border="#3b4756", text="#edf2f7",
+                               muted="#9ba9ba", accent="#60a5fa", accent2="#94a3b8", hover="#303b49",
+                               danger="#f87171", ok="#4ade80", warn="#fbbf24", sel="#314d73"),
 }
 
 QSS = """

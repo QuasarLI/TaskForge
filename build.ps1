@@ -1,8 +1,35 @@
-# Builds dist\TaskForge.exe. Usage: powershell -ExecutionPolicy Bypass -File build.ps1
+# Builds four edition-specific executables in one release pass.
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 python -m pip install -q -r requirements.txt pyinstaller pillow
 python tools\make_icon.py
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name TaskForge `
-  --icon assets\taskforge.ico --version-file tools\version_info.txt run.py
-Write-Host "Built: $PSScriptRoot\dist\TaskForge.exe"
+$release = Join-Path $PSScriptRoot 'dist\TaskForge-2.1.0'
+New-Item -ItemType Directory -Force $release | Out-Null
+$editions = @(
+  @{ Id='free'; Name='TaskForge-2.1.0-Free'; ProductId='' },
+  @{ Id='free-ads'; Name='TaskForge-2.1.0-Free-with-Ads'; ProductId='' },
+  @{ Id='supporter'; Name='TaskForge-2.1.0-Supporter'; ProductId=$env:TASKFORGE_GUMROAD_SUPPORTER_PRODUCT_ID },
+  @{ Id='pro'; Name='TaskForge-2.1.0-Pro'; ProductId=$env:TASKFORGE_GUMROAD_PRO_PRODUCT_ID }
+)
+foreach ($edition in $editions) {
+  $manifestDir = Join-Path $env:TEMP "taskforge-$($edition.Id)"
+  New-Item -ItemType Directory -Force $manifestDir | Out-Null
+  $manifest = Join-Path $manifestDir "edition.json"
+  @{ edition=$edition.Id; product_id=$edition.ProductId } | ConvertTo-Json | Set-Content -Encoding UTF8 $manifest
+  python -m PyInstaller --noconfirm --clean --onefile --windowed --name $edition.Name `
+    --distpath $release --workpath "$PSScriptRoot\build\$($edition.Id)" `
+    --specpath "$PSScriptRoot\build\$($edition.Id)" --add-data "$manifest;." `
+    --icon "$PSScriptRoot\assets\taskforge.ico" --version-file "$PSScriptRoot\tools\version_info.txt" `
+    "$PSScriptRoot\run.py"
+  if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed for $($edition.Id) with exit code $LASTEXITCODE" }
+  Remove-Item $manifest -Force
+  Remove-Item $manifestDir -Force
+}
+$built = @(Get-ChildItem "$release\*.exe")
+if ($built.Count -ne 4) { throw "Expected four edition executables, found $($built.Count)" }
+Get-FileHash "$release\*.exe" -Algorithm SHA256 |
+  ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
+  Set-Content -Encoding ASCII "$release\SHA256SUMS.txt"
+Copy-Item README.md,LICENSING.md,PRIVACY.md,SECURITY.md "$release"
+Compress-Archive -Force "$release\*" "$PSScriptRoot\dist\TaskForge-2.1.0-Windows.zip"
+Write-Host "Built editions and checksums: $release"

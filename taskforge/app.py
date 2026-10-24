@@ -7,7 +7,8 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMenu, QMessageBox,
                              QPushButton, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget)
 
-from . import __app_name__, __version__, icon, sysinfo
+from . import __app_name__, __version__, editions, icon, sysinfo
+from .page_resources import ResourcesPage
 from .pages_mem import MemoryPage
 from .pages_proc import DashboardPage, ProcessesPage
 from .pages_sys import CpuPage, SettingsPage, StartupPage, build_oc_guide
@@ -15,7 +16,8 @@ from .themes import palette, stylesheet
 from .util import Settings, is_admin, relaunch_as_admin
 from .widgets import Monitor, run_async, shutdown_workers
 
-NAV = ["Dashboard", "Processes", "Memory", "CPU & Turbo", "Overclocking Guide", "Startup", "Settings"]
+NAV = ["Dashboard", "Processes", "Memory", "CPU & Turbo", "Overclocking Guide", "Startup",
+       "Settings", "Edition & Resources"]
 
 
 class MainWindow(QMainWindow):
@@ -23,7 +25,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = settings
         self.really_quit = False
-        self.setWindowTitle(f"{__app_name__} — System Control Center")
+        self.setWindowTitle(f"{__app_name__} {editions.info()['name']} — System Control Center")
         self.resize(1320, 860)
         self.setMinimumSize(1050, 680)
 
@@ -55,7 +57,7 @@ class MainWindow(QMainWindow):
             sl.addWidget(b)
             self.nav.append(b)
         sl.addStretch()
-        foot = QLabel(f"v{__version__}\nNo network • No telemetry")
+        foot = QLabel(f"{editions.info()['name']} • v{__version__}\nNo telemetry")
         foot.setObjectName("SidebarFoot")
         foot.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sl.addWidget(foot)
@@ -70,7 +72,9 @@ class MainWindow(QMainWindow):
         self.guide = build_oc_guide(self.monitor, settings.get)
         self.startup = StartupPage(settings)
         self.settings_page = SettingsPage(settings)
-        for p in (self.dashboard, self.processes, self.memory, self.cpu, self.guide, self.startup, self.settings_page):
+        self.resources = ResourcesPage()
+        for p in (self.dashboard, self.processes, self.memory, self.cpu, self.guide, self.startup,
+                  self.settings_page, self.resources):
             self.stack.addWidget(p)
         body.addWidget(self.stack, 1)
 

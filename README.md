@@ -1,35 +1,100 @@
-# TaskForge 2.0 — System Control Center (Windows)
+# TaskForge 2.1.0
 
-PyQt6 task manager focused on CPU turbo/power tuning, RAM and process control, and pagefile help.
+TaskForge is a Windows system control center for live CPU/RAM monitoring, protected process management,
+documented processor power controls, and reversible paging-file guidance. It uses supported Windows APIs and
+commands, explains tradeoffs in plain language, and never applies tuning automatically.
 
-**Canonical source:** `D:\TaskForgeGitSources` (this folder). `D:\TaskForge` holds the original prototype and is kept for reference only.
+## Editions
 
-## Run / build
+| Capability | Free | Free with Ads | Supporter | Pro |
+|---|:---:|:---:|:---:|:---:|
+| Monitoring, explanations, critical safety | Yes | Yes | Yes | Yes |
+| Protected process controls | Yes | Yes | Yes | Yes |
+| Backups and restore | Yes | Yes | Yes | Yes |
+| Advanced RAM/pagefile and CPU tools | - | Yes | Yes | Yes |
+| Affiliate resource cards | No | Yes | No | No |
+| Gumroad activation | No | No | `ncbdzb` | `uojwbi` |
+| Priority controls and redacted export | - | - | - | Yes |
+
+Supporter and Pro are build-time-distinct binaries and remain locked until a matching customer-entered Gumroad
+license verifies. Keys are never logged and local activation is protected with Windows DPAPI. Network failure
+fails closed for a new activation; an already protected local activation remains usable offline. No seller secret
+is needed or supported.
+
+- [TaskForge Supporter](https://quasarlabs3.gumroad.com/l/ncbdzb)
+- [TaskForge Pro](https://quasarlabs3.gumroad.com/l/uojwbi)
+
+## Safe tools and beginner guidance
+
+- **RAM:** shows working set, private commit, cache, commit limit, kernel pools, and top consumers. Cached RAM is
+  explained as reusable rather than “wasted.” Working-set trim is explicitly temporary and never advertised as a
+  speed boost.
+- **Paging:** reads the same registry value as Windows, recommends a conservative size from RAM and observed peak
+  commit, backs up before writes, requires admin, and states when reboot is required. Windows-managed is the
+  sensible default.
+- **CPU:** reads live effective clock and per-core load; exposes documented `powercfg` settings for boost mode,
+  min/max state, EPP, parking, cooling, and C-states. Each setting states likely benefit, heat/battery risk,
+  sensible default, reversibility, and admin implications.
+- **Processes:** protects critical Windows processes from destructive actions and confirms kill/suspend operations.
+- **Themes:** Midnight Violet, OLED Black, Nord Frost, Ember Red, Matrix Green, Arctic Light, Cyber Ocean,
+  Solarized Dusk, Royal Amethyst, and Slate Professional.
+
+## Advertising and privacy
+
+Only **Free with Ads** shows sponsored cards, and only on **Edition & Resources**, away from operational tabs.
+They are clearly labeled affiliate links, open in the system browser only after a click, and use only approved
+AdGuard destinations. There are no tracking SDKs, embedded browsers, popups, timers, auto-downloads, or deceptive
+controls. See [PRIVACY.md](PRIVACY.md).
+
+## Run, test, and build
+
 ```powershell
-pip install -r requirements.txt
-python run.py                 # run from source
-python run.py --selftest      # opens every page, checks live telemetry, exits 0 on success (changes nothing)
-powershell -ExecutionPolicy Bypass -File build.ps1   # -> dist\TaskForge.exe
+python -m pip install -r requirements.txt
+python run.py
+python -m unittest discover -s tests -v
+python run.py --selftest
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
-Bump the version in `taskforge/__init__.py` and `tools/version_info.txt`.
 
-## Layout
-| File | Purpose |
-|---|---|
-| `taskforge/app.py` | Main window, header/icon, sidebar, tray, admin relaunch, `--selftest` |
-| `taskforge/widgets.py` | `Monitor` (background telemetry), sparkline, workers, helpers |
-| `taskforge/procman.py` | Fast process snapshot (NtQuerySystemInformation), kill/tree/suspend/trim/priority/affinity/EcoQoS, protected-process rules |
-| `taskforge/power.py` | `powercfg` plans, processor settings, turbo presets, JSON backup/restore |
-| `taskforge/pagefile.py` | Read/write `PagingFiles` registry value with backups, sizing recommendation |
-| `taskforge/sysinfo.py` | CPU identity, PDH effective clock, WMI inventory, GetPerformanceInfo |
-| `taskforge/pages_*.py` | UI pages |
-| `taskforge/themes.py`, `icon.py` | 6 themes, programmatic icon |
+`--selftest` opens every page, waits for real telemetry, and exits without changing the machine. The build produces
+four visibly named executables, checksums, a Windows zip, the app icon, and a 1200x675 Gumroad cover:
 
-## Safety rules (keep these)
-- Only documented Windows interfaces. No MSR/chipset writes: multiplier, BCLK and voltage are **not** changed by TaskForge; the Overclocking Guide routes users to BIOS / Intel XTU / AMD Ryzen Master.
-- Every power/pagefile change is confirmed, backed up to `%APPDATA%\TaskForge\backups`, and restorable. Pagefile changes need admin + reboot.
-- Core Windows / critical-flagged processes cannot be killed or suspended. Destructive actions always confirm.
-- Memory trimming is presented honestly (not a guaranteed speed-up).
+```text
+dist\TaskForge-2.1.0\TaskForge-2.1.0-Free.exe
+dist\TaskForge-2.1.0\TaskForge-2.1.0-Free-with-Ads.exe
+dist\TaskForge-2.1.0\TaskForge-2.1.0-Supporter.exe
+dist\TaskForge-2.1.0\TaskForge-2.1.0-Pro.exe
+assets\taskforge-gumroad-matrix-cover.png
+```
 
-## Secrets
-The app needs **no API keys** and makes no network requests. Never commit keys: use environment variables or a local `.env` (git-ignored). The old `D:\TaskForge\generate.py` only used a local Ollama server (no key).
+Upload the local Supporter and Pro executables to their matching Gumroad products. Do not upload or enter seller
+credentials into TaskForge. Before publishing paid files, confirm Gumroad still accepts the documented
+`POST https://api.gumroad.com/v2/licenses/verify` fields `product_permalink`, `license_key`, and
+`increment_uses_count`. Current Gumroad products require their product IDs rather than permalinks. Before the paid
+build, set `TASKFORGE_GUMROAD_SUPPORTER_PRODUCT_ID` and `TASKFORGE_GUMROAD_PRO_PRODUCT_ID` to the non-secret IDs shown
+by Gumroad, then run `build.ps1`. If absent, the paid binaries intentionally remain locked with a clear message.
+
+## Releases and Sigstore
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`. GitHub Actions builds on Windows, runs tests and the safe
+self-test, generates SHA-256 checksums, creates keyless Sigstore bundles with GitHub OIDC, attests build provenance,
+and publishes only Free and Free-with-Ads publicly. Paid Python bundles are neither released nor uploaded as workflow
+artifacts because license checks are not equivalent to cryptographic DRM.
+
+Verify a downloaded file after installing `cosign`:
+
+```powershell
+cosign verify-blob TaskForge-2.1.0-Free.exe `
+  --bundle TaskForge-2.1.0-Free.exe.sigstore.json `
+  --certificate-identity-regexp "https://github.com/QuasarLI/TaskForge/.github/workflows/release.yml@refs/tags/v.*" `
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+Get-FileHash TaskForge-2.1.0-Free.exe -Algorithm SHA256
+```
+
+## Safety and source licensing
+
+No MSR, chipset, voltage, multiplier, or BCLK writes are performed. Every power/pagefile change is confirmed,
+backed up under `%APPDATA%\TaskForge\backups`, and restorable. See [SECURITY.md](SECURITY.md).
+
+This repository did not contain an open-source license before this release. No open-source grant is inferred or
+invented; see [LICENSING.md](LICENSING.md) before redistributing source or binaries.
