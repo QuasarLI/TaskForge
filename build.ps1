@@ -3,13 +3,14 @@ $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 python -m pip install -q -r requirements.txt pyinstaller pillow
 python tools\make_icon.py
-$release = Join-Path $PSScriptRoot 'dist\TaskForge-2.1.0'
+$version = '2.2.0-beta.1'
+$release = Join-Path $PSScriptRoot "dist\TaskForge-$version"
 New-Item -ItemType Directory -Force $release | Out-Null
 $editions = @(
-  @{ Id='free'; Name='TaskForge-2.1.0-Free'; ProductId='' },
-  @{ Id='free-ads'; Name='TaskForge-2.1.0-Free-with-Ads'; ProductId='' },
-  @{ Id='supporter'; Name='TaskForge-2.1.0-Supporter'; ProductId=$env:TASKFORGE_GUMROAD_SUPPORTER_PRODUCT_ID },
-  @{ Id='pro'; Name='TaskForge-2.1.0-Pro'; ProductId=$env:TASKFORGE_GUMROAD_PRO_PRODUCT_ID }
+  @{ Id='free'; Name="TaskForge-$version-Free"; ProductId='' },
+  @{ Id='free-ads'; Name="TaskForge-$version-Free-with-Ads"; ProductId='' },
+  @{ Id='supporter'; Name="TaskForge-$version-Supporter"; ProductId=$env:TASKFORGE_GUMROAD_SUPPORTER_PRODUCT_ID },
+  @{ Id='pro'; Name="TaskForge-$version-Pro"; ProductId=$env:TASKFORGE_GUMROAD_PRO_PRODUCT_ID }
 )
 foreach ($edition in $editions) {
   $manifestDir = Join-Path $env:TEMP "taskforge-$($edition.Id)"
@@ -31,5 +32,5 @@ Get-FileHash "$release\*.exe" -Algorithm SHA256 |
   ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } |
   Set-Content -Encoding ASCII "$release\SHA256SUMS.txt"
 Copy-Item README.md,LICENSING.md,PRIVACY.md,SECURITY.md "$release"
-Compress-Archive -Force "$release\*" "$PSScriptRoot\dist\TaskForge-2.1.0-Windows.zip"
+Compress-Archive -Force "$release\*" "$PSScriptRoot\dist\TaskForge-$version-Windows.zip"
 Write-Host "Built editions and checksums: $release"

@@ -41,6 +41,15 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(licensing.LicenseError):
             licensing.verify_license("ncbdzb", "test-key-not-real")
 
+    def test_configured_beta_product_ids(self):
+        supporter = "qIWfZBJk_q_bpjPcghP3wA=="
+        pro = "aBykQcqc7WgISimkDyJnXw=="
+        for permalink, product_id in (("ncbdzb", supporter), ("uojwbi", pro)):
+            opener = lambda _request, timeout, pid=product_id: Response({
+                "success": True, "purchase": {"product_id": pid, "refunded": False}})
+            record = licensing.verify_license(permalink, "mock-license-key", product_id, opener)
+            self.assertEqual(record["product_id"], product_id)
+
     def test_activation_storage_seam(self):
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, "activation.dat")

@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel, QMainWin
 
 from . import __app_name__, __version__, editions, icon, sysinfo
 from .page_resources import ResourcesPage
+from .page_health import HealthPage
 from .pages_mem import MemoryPage
 from .pages_proc import DashboardPage, ProcessesPage
 from .pages_sys import CpuPage, SettingsPage, StartupPage, build_oc_guide
@@ -16,7 +17,7 @@ from .themes import palette, stylesheet
 from .util import Settings, is_admin, relaunch_as_admin
 from .widgets import Monitor, run_async, shutdown_workers
 
-NAV = ["Dashboard", "Processes", "Memory", "CPU & Turbo", "Overclocking Guide", "Startup",
+NAV = ["Dashboard", "System Health", "Processes", "Memory", "CPU & Turbo", "Overclocking Guide", "Startup",
        "Settings", "Edition & Resources"]
 
 
@@ -66,6 +67,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         st = self.status
         self.dashboard = DashboardPage(self.monitor, pal)
+        self.health = HealthPage(self.monitor, st)
         self.processes = ProcessesPage(self.monitor, st)
         self.memory = MemoryPage(self.monitor, st)
         self.cpu = CpuPage(self.monitor, st)
@@ -73,7 +75,7 @@ class MainWindow(QMainWindow):
         self.startup = StartupPage(settings)
         self.settings_page = SettingsPage(settings)
         self.resources = ResourcesPage()
-        for p in (self.dashboard, self.processes, self.memory, self.cpu, self.guide, self.startup,
+        for p in (self.dashboard, self.health, self.processes, self.memory, self.cpu, self.guide, self.startup,
                   self.settings_page, self.resources):
             self.stack.addWidget(p)
         body.addWidget(self.stack, 1)
@@ -171,7 +173,8 @@ class MainWindow(QMainWindow):
         self.tray = QSystemTrayIcon(icon.app_icon(), self)
         m = QMenu()
         m.addAction("Show TaskForge", self.restore)
-        for i, name in ((0, "Dashboard"), (1, "Processes"), (2, "Memory"), (3, "CPU & Turbo")):
+        for i, name in ((0, "Dashboard"), (1, "System Health"), (2, "Processes"), (3, "Memory"),
+                        (4, "CPU & Turbo")):
             m.addAction(name, lambda i=i: (self.restore(), self.go(i)))
         m.addSeparator()
         quit_act = QAction("Exit", m)

@@ -1,8 +1,15 @@
-# TaskForge 2.1.0
+# TaskForge 2.2.0 Beta 1
+
+**Real beta release:** [Download v2.2.0-beta.1](https://github.com/QuasarLI/TaskForge/releases/tag/v2.2.0-beta.1) |
+[Source repository](https://github.com/QuasarLI/TaskForge) | [Changelog](CHANGELOG.md)
 
 TaskForge is a Windows system control center for live CPU/RAM monitoring, protected process management,
 documented processor power controls, and reversible paging-file guidance. It uses supported Windows APIs and
 commands, explains tradeoffs in plain language, and never applies tuning automatically.
+
+**Beta highlight:** the new System Health page translates live CPU, memory, commit, and process telemetry into
+actionable plain-language guidance, creates safe native Windows battery/energy reports, and supports redacted Pro
+snapshots for before/after comparisons.
 
 ## Editions
 
@@ -60,10 +67,10 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 four visibly named executables, checksums, a Windows zip, the app icon, and a 1200x675 Gumroad cover:
 
 ```text
-dist\TaskForge-2.1.0\TaskForge-2.1.0-Free.exe
-dist\TaskForge-2.1.0\TaskForge-2.1.0-Free-with-Ads.exe
-dist\TaskForge-2.1.0\TaskForge-2.1.0-Supporter.exe
-dist\TaskForge-2.1.0\TaskForge-2.1.0-Pro.exe
+dist\TaskForge-2.2.0-beta.1\TaskForge-2.2.0-beta.1-Free.exe
+dist\TaskForge-2.2.0-beta.1\TaskForge-2.2.0-beta.1-Free-with-Ads.exe
+dist\TaskForge-2.2.0-beta.1\TaskForge-2.2.0-beta.1-Supporter.exe
+dist\TaskForge-2.2.0-beta.1\TaskForge-2.2.0-beta.1-Pro.exe
 assets\taskforge-gumroad-matrix-cover.png
 ```
 
@@ -77,18 +84,19 @@ by Gumroad, then run `build.ps1`. If absent, the paid binaries intentionally rem
 ## Releases and Sigstore
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`. GitHub Actions builds on Windows, runs tests and the safe
-self-test, generates SHA-256 checksums, creates keyless Sigstore bundles with GitHub OIDC, attests build provenance,
-and publishes only Free and Free-with-Ads publicly. Paid Python bundles are neither released nor uploaded as workflow
-artifacts because license checks are not equivalent to cryptographic DRM.
+self-test, produces Free and Free-with-Ads ZIPs, generates SHA-256 checksums, creates keyless Sigstore bundles with
+GitHub OIDC, attests build provenance, and publishes those ZIPs as a prerelease. Paid ZIPs remain private local
+Gumroad upload files. They are checksummed but not Sigstore-signed: this workflow cannot use GitHub OIDC to sign
+private local files without uploading them.
 
 Verify a downloaded file after installing `cosign`:
 
 ```powershell
-cosign verify-blob TaskForge-2.1.0-Free.exe `
-  --bundle TaskForge-2.1.0-Free.exe.sigstore.json `
+cosign verify-blob TaskForge-2.2.0-beta.1-Free.zip `
+  --bundle TaskForge-2.2.0-beta.1-Free.zip.sigstore.json `
   --certificate-identity-regexp "https://github.com/QuasarLI/TaskForge/.github/workflows/release.yml@refs/tags/v.*" `
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-Get-FileHash TaskForge-2.1.0-Free.exe -Algorithm SHA256
+Get-FileHash TaskForge-2.2.0-beta.1-Free.zip -Algorithm SHA256
 ```
 
 ## Safety and source licensing
