@@ -43,6 +43,11 @@ class ResourcesPage(QWidget):
         self.state.setObjectName("Value")
         lay.addWidget(self.state)
         self._update_state()
+        if editions.is_test_build():
+            lay.addWidget(explain(
+                "UNLOCKED TEST BUILD — NOT FOR DISTRIBUTION OR GUMROAD UPLOAD. This local owner-only build unlocks "
+                "features for evaluation, does not verify or accept production license keys, and must never be "
+                "uploaded to Gumroad or distributed."))
 
         matrix = QGroupBox("What each edition includes")
         ml = QVBoxLayout(matrix)
@@ -56,7 +61,7 @@ class ResourcesPage(QWidget):
 
         if self.policy["paid"]:
             self._activation_box(lay)
-        else:
+        elif not editions.is_test_build():
             upgrades = QGroupBox("Optional upgrades")
             ul = QHBoxLayout(upgrades)
             for label, edition in (("TaskForge Supporter", editions.SUPPORTER), ("TaskForge Pro", editions.PRO)):

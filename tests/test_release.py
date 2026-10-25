@@ -2,8 +2,11 @@ import json
 import os
 import tempfile
 import unittest
+import urllib.error
+from datetime import datetime
+from unittest import mock
 
-from taskforge import editions, licensing, pagefile
+from taskforge import editions, licensing, pagefile, procman, sysinfo, virustotal
 from taskforge.page_resources import ADS
 from taskforge.themes import THEMES
 
@@ -22,6 +25,54 @@ class Response:
         return json.dumps(self.payload).encode()
 
 
+class VirusTotalTests(unittest.TestCase):
+    def test_explicit_hash_only_lookup_and_session_cache(self):
+        sha256 = "a" * 64
+        requests = []
+
+        def opener(request, timeout):
+            requests.append(request)
+            if request.full_url.endswith("/users/me"):
+                return Response({"data": {"id": "mock-user"}})
+            return Response({"data": {"attributes": {"last_analysis_stats": {
+                "malicious": 1, "suspicious": 2, "undetected": 40, "harmless": 5}}}})
+
+        with tempfile.TemporaryDirectory() as folder:
+            store = virustotal.SecretStore(
+                os.path.join(folder, "vt.key"), protector=lambda value: value[::-1],
+                unprotector=lambda value: value[::-1])
+            client = virustotal.VirusTotalClient(store, opener)
+            client.verify_key("unit-test-key")
+            with open(store.path, "rb") as handle:
+                self.assertNotIn(b"unit-test-key", handle.read())
+            result = client.lookup_hash(sha256)
+            cached = client.lookup_hash(sha256)
+            self.assertEqual(result["malicious"], 1)
+            self.assertEqual(datetime.fromisoformat(result["checked_at"]).tzinfo is not None, True)
+            self.assertTrue(cached["cached"])
+            self.assertEqual(len(requests), 2)
+            self.assertTrue(requests[1].full_url.endswith("/files/" + sha256))
+            self.assertIsNone(requests[1].data)
+            self.assertEqual(requests[1].get_header("X-apikey"), "unit-test-key")
+            store.clear()
+            with self.assertRaises(virustotal.VirusTotalError):
+                client.lookup_hash("b" * 64)
+
+    def test_rate_limit_and_bad_hash_are_sanitized(self):
+        def limited(_request, timeout):
+            raise urllib.error.HTTPError("https://www.virustotal.com/api/v3/files", 429, "limited", {}, None)
+
+        with tempfile.TemporaryDirectory() as folder:
+            store = virustotal.SecretStore(os.path.join(folder, "vt.key"),
+                                           protector=lambda value: value, unprotector=lambda value: value)
+            store.save("unit-test-key")
+            client = virustotal.VirusTotalClient(store, limited)
+            with self.assertRaisesRegex(virustotal.VirusTotalError, "rate limit"):
+                client.lookup_hash("a" * 64)
+            with self.assertRaisesRegex(virustotal.VirusTotalError, "SHA-256"):
+                client.lookup_hash("not-a-hash")
+
+
 class ReleaseTests(unittest.TestCase):
     def test_edition_matrix(self):
         self.assertFalse(editions.CATALOG["free"]["advanced"])
@@ -29,6 +80,17 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(editions.CATALOG["supporter"]["product"], "ncbdzb")
         self.assertEqual(editions.CATALOG["pro"]["product"], "uojwbi")
         self.assertFalse(editions.entitled("pro", activated=True))
+
+    def test_unlocked_test_manifest_is_explicit_and_never_verifies_licenses(self):
+        self.assertEqual(editions.normalize_manifest({"edition": "pro-test"})["edition"], "free")
+        test_manifest = editions.normalize_manifest({"edition": "pro-test", "test_build": True})
+        self.assertEqual(test_manifest["edition"], "pro-test")
+        with mock.patch.object(editions, "MANIFEST", test_manifest), \
+                mock.patch.object(editions, "EDITION", editions.PRO_TEST):
+            self.assertTrue(editions.is_test_build())
+            self.assertTrue(editions.can("pro"))
+            with self.assertRaisesRegex(licensing.LicenseError, "does not accept"):
+                licensing.verify_license("uojwbi", "", "mock-product", opener=lambda *_args: self.fail())
 
     def test_license_verification_and_mismatch(self):
         opener = lambda _request, timeout: Response({"success": True, "purchase": {
@@ -76,6 +138,49 @@ class ReleaseTests(unittest.TestCase):
         initial, maximum = pagefile.recommend(16 * 1024**3, 20 * 1024**3)
         self.assertGreaterEqual(initial, 2048)
         self.assertGreaterEqual(maximum, initial)
+        self.assertEqual(pagefile.validate_fixed_local_drive("D", lambda _root: 3), "D:\\")
+        with self.assertRaises(ValueError):
+            pagefile.validate_fixed_local_drive("E", lambda _root: 2)
+        with self.assertRaises(ValueError):
+            pagefile.build_line("custom", "C", 2048, 1024)
+
+    def test_firmware_placeholder_sanitization(self):
+        for value in ("Default string", "To Be Filled By O.E.M.", "System Product Name",
+                      "Unknown", "Not Specified", "00000000", "   "):
+            self.assertIsNone(sysinfo.sanitize_firmware_value(value), value)
+        self.assertEqual(sysinfo.sanitize_firmware_value("Example Board"), "Example Board")
+        result = sysinfo.sanitize_hardware_inventory({
+            "system": {"Manufacturer": "Default string", "Model": "Model X"},
+            "board": {"Manufacturer": "Maker", "Product": "System Product Name"},
+        })
+        self.assertIsNone(result["system"]["Manufacturer"])
+        self.assertIsNone(result["board"]["Product"])
+
+    def test_process_history_and_non_verdict_risk_signals(self):
+        history = procman.ProcessHistory(capacity=2)
+        for sample in (1, 2, 3):
+            history.update([{"pid": 10, "create": 100, "cpu": sample, "ws": sample * 100}])
+        self.assertEqual(len(history.samples[(10, 100)]["cpu"]), 2)
+        row = {"pid": 10, "create": 200, "cpu": 1, "ws": 100}
+        history.update([row])
+        self.assertNotIn((10, 100), history.samples)
+        self.assertEqual(len(row["history"]["memory"]), 1)
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "sample.exe")
+            with open(path, "wb") as handle:
+                handle.write(b"not executed")
+            signals = procman.process_risk_signals(path, "NotSigned", windows_dir=r"Z:\Windows")
+        self.assertTrue(any("Authenticode" in signal for signal in signals))
+        self.assertFalse(any("malware detected" in signal.lower() for signal in signals))
+        self.assertTrue(procman.protection_reason(4))
+
+    def test_process_list_order_is_stable_between_samples(self):
+        previous = [8, 3, 5]
+        rows = {3: {"cpu": 100}, 5: {"cpu": 1}, 8: {"cpu": 25}, 11: {"cpu": 50}}
+        result = procman.preserve_process_order(previous, rows, lambda row: row["cpu"], reverse=True)
+        self.assertEqual(result, [8, 3, 5, 11])
+        self.assertEqual(procman.preserve_process_order(result, {3: rows[3], 11: rows[11]},
+                                                        lambda row: row["cpu"]), [3, 11])
 
 
 if __name__ == "__main__":

@@ -7,12 +7,15 @@ FREE = "free"
 FREE_ADS = "free-ads"
 SUPPORTER = "supporter"
 PRO = "pro"
+PRO_TEST = "pro-test"
+TEST_BUILD_NAME = "UNLOCKED TEST BUILD — NOT FOR DISTRIBUTION OR GUMROAD UPLOAD"
 
 CATALOG = {
     FREE: {"name": "Free", "advanced": False, "ads": False, "paid": False, "product": None},
     FREE_ADS: {"name": "Free with Ads", "advanced": True, "ads": True, "paid": False, "product": None},
     SUPPORTER: {"name": "Supporter", "advanced": True, "ads": False, "paid": True, "product": "ncbdzb"},
     PRO: {"name": "Pro", "advanced": True, "ads": False, "paid": True, "product": "uojwbi"},
+    PRO_TEST: {"name": TEST_BUILD_NAME, "advanced": True, "ads": False, "paid": False, "product": None},
 }
 
 
@@ -22,8 +25,17 @@ def _load():
             manifest = json.load(handle)
     except (OSError, ValueError):
         manifest = {"edition": FREE}
+    return normalize_manifest(manifest)
+
+
+def normalize_manifest(manifest):
+    manifest = dict(manifest)
     value = manifest.get("edition", FREE)
-    manifest["edition"] = value if value in CATALOG else FREE
+    test_build = value == PRO_TEST and manifest.get("test_build") is True
+    manifest["edition"] = PRO_TEST if test_build else (value if value in CATALOG and value != PRO_TEST else FREE)
+    manifest["test_build"] = test_build
+    if test_build:
+        manifest["product_id"] = None
     return manifest
 
 
@@ -37,17 +49,19 @@ def info():
 
 def entitled(feature: str, activated=False):
     policy = info()
-    unlocked = not policy["paid"] or activated
+    unlocked = EDITION == PRO_TEST or not policy["paid"] or activated
     if feature == "core":
         return True
     if feature == "advanced":
         return policy["advanced"] and unlocked
     if feature == "pro":
-        return EDITION == PRO and unlocked
+        return EDITION in (PRO, PRO_TEST) and unlocked
     return False
 
 
 def activated():
+    if EDITION == PRO_TEST:
+        return True
     if not info()["paid"]:
         return True
     try:
@@ -60,3 +74,7 @@ def activated():
 
 def can(feature: str):
     return entitled(feature, activated())
+
+
+def is_test_build():
+    return bool(MANIFEST.get("test_build"))

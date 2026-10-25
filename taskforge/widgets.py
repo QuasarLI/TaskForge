@@ -2,12 +2,14 @@
 from collections import deque
 
 import psutil
+import os
+import time
 from PyQt6.QtCore import QObject, QRectF, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMessageBox, QProgressBar, QSizePolicy,
                              QTableWidgetItem, QVBoxLayout, QWidget)
 
-from . import sysinfo
+from . import procman, sysinfo
 from .procman import ProcessSampler
 
 
@@ -28,6 +30,16 @@ class Worker(QThread):
 
 
 _LIVE_WORKERS = set()
+
+
+def workers_running():
+    for worker in list(_LIVE_WORKERS):
+        try:
+            if worker.isRunning():
+                return True
+        except RuntimeError:
+            continue
+    return False
 
 
 def shutdown_workers(timeout_ms=5000):
@@ -61,6 +73,7 @@ class Monitor(QObject):
         self.sampler = ProcessSampler()
         self.history = {k: deque([0.0] * 90, maxlen=90) for k in ("cpu", "ram", "commit", "mhz")}
         self.last = {}
+        self.process_history = procman.ProcessHistory()
         self._busy = False
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
@@ -90,8 +103,10 @@ class Monitor(QObject):
         vm = psutil.virtual_memory()
         perf = sysinfo.performance_info()
         procs = self.sampler.sample()
+        system_disk = psutil.disk_usage(os.path.abspath(os.sep))
         return {"cpu": sum(per) / max(1, len(per)), "percore": per, "vm": vm, "perf": perf,
-                "mhz": self.clock.mhz(), "procs": procs}
+                "mhz": self.clock.mhz(), "procs": procs, "uptime_seconds": max(0, int(time.time() - psutil.boot_time())),
+                "system_disk": system_disk}
 
     def _publish(self, snap):
         self._busy = False
@@ -101,6 +116,7 @@ class Monitor(QObject):
         if perf.get("commit_limit"):
             self.history["commit"].append(100.0 * perf["commit_total"] / perf["commit_limit"])
         self.history["mhz"].append(snap["mhz"])
+        self.process_history.update(snap["procs"])
         snap["history"] = self.history
         self.last = snap
         self.updated.emit(snap)

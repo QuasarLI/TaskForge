@@ -1,6 +1,7 @@
 """Paging-file configuration (registry PagingFiles, same value the System Properties dialog writes)."""
 import json
 import os
+import re
 import winreg
 
 from .util import backup_dir, timestamp
@@ -69,12 +70,36 @@ def apply(lines):
 
 
 def build_line(mode: str, drive: str, initial=0, maximum=0) -> str:
-    drive = drive.rstrip(":\\").upper()
     if mode == "auto":
         return "?:\\pagefile.sys"
+    drive = drive.rstrip(":\\").upper()
+    if not re.fullmatch(r"[A-Z]", drive):
+        raise ValueError("Choose a single local drive letter.")
     if mode == "system":
         return f"{drive}:\\pagefile.sys 0 0"
-    return f"{drive}:\\pagefile.sys {int(initial)} {int(maximum)}"
+    if mode != "custom":
+        raise ValueError("Unsupported pagefile configuration mode.")
+    initial, maximum = int(initial), int(maximum)
+    if initial < 16 or maximum < initial:
+        raise ValueError("Custom pagefile size must be at least 16 MB and maximum must be >= initial.")
+    return f"{drive}:\\pagefile.sys {initial} {maximum}"
+
+
+def validate_fixed_local_drive(drive, drive_type=None):
+    """Reject removable, optical, RAM-disk and network volumes before configuration."""
+    letter = str(drive).rstrip(":\\").upper()
+    if not re.fullmatch(r"[A-Z]", letter):
+        raise ValueError("Choose a single local drive letter.")
+    if drive_type is None:
+        import ctypes
+        drive_type = ctypes.windll.kernel32.GetDriveTypeW
+        drive_type.argtypes = [ctypes.c_wchar_p]
+        drive_type.restype = ctypes.c_uint
+    drive_root = f"{letter}:\\"
+    result = drive_type(drive_root)
+    if result != 3:  # DRIVE_FIXED
+        raise ValueError(f"{drive_root} is not a fixed local drive; removable/network targets are unsupported.")
+    return drive_root
 
 
 def latest_backup():

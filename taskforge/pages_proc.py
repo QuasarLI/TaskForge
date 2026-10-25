@@ -1,4 +1,5 @@
 """Dashboard and Processes pages."""
+import html
 import os
 import subprocess
 
@@ -6,12 +7,13 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QGuiApplication
 from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox, QGridLayout, QGroupBox,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
-                             QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+                             QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from . import editions, procman
 from .procman import OpError
 from .util import fmt_bytes
-from .widgets import MetricCard, NumItem, bar, confirm, explain, page_header
+from .virustotal import VirusTotalClient, VirusTotalError
+from .widgets import MetricCard, NumItem, Sparkline, bar, confirm, explain, page_header, run_async
 
 
 class DashboardPage(QWidget):
@@ -56,6 +58,8 @@ class DashboardPage(QWidget):
 
         self.sysline = explain("")
         lay.addWidget(self.sysline)
+        self.summary = explain("")
+        lay.addWidget(self.summary)
         lay.addStretch()
         monitor.updated.connect(self.refresh)
 
@@ -88,6 +92,13 @@ class DashboardPage(QWidget):
             self.sysline.setText(f"Handles {p['handles']:,}   •   Threads {p['threads']:,}   •   "
                                  f"File cache {fmt_bytes(p['system_cache'])}   •   Kernel paged "
                                  f"{fmt_bytes(p['kernel_paged'])} / non-paged {fmt_bytes(p['kernel_nonpaged'])}")
+        uptime = s["uptime_seconds"]
+        days, hours = divmod(uptime // 3600, 24)
+        minutes = (uptime // 60) % 60
+        disk = s["system_disk"]
+        self.summary.setText(
+            f"Uptime {days}d {hours}h {minutes}m  •  System drive free "
+            f"{fmt_bytes(disk.free)} of {fmt_bytes(disk.total)}  •  {len(s['procs'])} live processes")
         for b, v in zip(self.core_bars, s["percore"]):
             b.setValue(int(v))
         procs = [x for x in s["procs"] if x["pid"] not in (0,)]
@@ -97,7 +108,8 @@ class DashboardPage(QWidget):
         self.top_mem.setText("<b>Memory</b><br>" + "<br>".join(f"{x['name']} — {fmt_bytes(x['ws'])}" for x in tm))
 
 
-COLS = ["Name", "PID", "CPU %", "Working set", "Private", "Threads", "Priority", "User", "Path"]
+COLS = ["Name", "PID", "Parent", "CPU %", "Working set", "Private commit",
+        "Threads", "Handles", "User", "Path"]
 
 
 class AffinityDialog(QDialog):
@@ -129,17 +141,23 @@ class ProcessesPage(QWidget):
         super().__init__()
         self.monitor, self.status = monitor, status
         self.rows = []
+        self._rendering = False
+        self._details_pid = None
+        self._visible_order = []
+        self._sort_col = 4
+        self._sort_descending = True
         lay = QVBoxLayout(self)
         lay.setContentsMargins(22, 18, 22, 12)
-        lay.addWidget(page_header("Processes", "Live process list with enhanced control. Right-click a row for "
-                                               "every action. Core Windows processes are protected from kill/suspend."))
+        self.vt = VirusTotalClient()
+        lay.addWidget(page_header("Processes", "Inspect live CPU and memory use, select a process for details, or "
+                                               "right-click for controls. System-process protections remain active."))
         tb = QHBoxLayout()
         self.filter = QLineEdit()
         self.filter.setPlaceholderText("Filter by name, PID, user or path…")
-        self.filter.textChanged.connect(self.render)
+        self.filter.textChanged.connect(lambda: self.render(preserve_order=False))
         tb.addWidget(self.filter, 1)
         self.hide_sys = QCheckBox("Hide system / other users")
-        self.hide_sys.toggled.connect(self.render)
+        self.hide_sys.toggled.connect(lambda: self.render(preserve_order=False))
         tb.addWidget(self.hide_sys)
         self.pause = QCheckBox("Pause updates")
         tb.addWidget(self.pause)
@@ -147,15 +165,9 @@ class ProcessesPage(QWidget):
 
         actions = QHBoxLayout()
         for text, obj, fn, tip in (
-            ("End task", "DangerBtn", self.kill, "TerminateProcess: immediate, unsaved data is lost."),
-            ("End tree", "DangerBtn", self.kill_tree, "Kill the process and every child it started."),
-            ("Suspend", "", self.suspend, "Freeze all threads (process stays in memory)."),
-            ("Resume", "", self.resume, "Unfreeze a suspended process."),
-            ("Trim RAM", "", self.trim, "Page out the working set. It refills as the app touches memory again."),
-            ("Efficiency mode", "", self.eco, "Windows 11 EcoQoS + idle priority: runs the process on efficient "
-                                              "clocks/cores to save power for background apps."),
-            ("Affinity…", "", self.affinity, "Choose the CPUs this process may use."),
-            ("Open location", "", self.open_loc, "Show the executable in Explorer."),
+            ("End task", "DangerBtn", self.kill, "Ends immediately; unsaved work may be lost."),
+            ("Trim selected", "", self.trim, "Requests Windows to trim selected working sets; memory may refill."),
+            ("Open location", "", self.open_loc, "Show the selected executable in Explorer."),
         ):
             b = QPushButton(text)
             if obj:
@@ -166,23 +178,63 @@ class ProcessesPage(QWidget):
         actions.addStretch()
         lay.addLayout(actions)
 
+        split = QSplitter(Qt.Orientation.Horizontal)
         self.table = QTableWidget(0, len(COLS))
         self.table.setHorizontalHeaderLabels(COLS)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        self.table.setSortingEnabled(True)
-        self.table.sortByColumn(3, Qt.SortOrder.DescendingOrder)
+        self.table.setSortingEnabled(False)
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         hh.setStretchLastSection(True)
-        for i, w in enumerate((200, 70, 70, 100, 100, 70, 100, 160)):
+        hh.setSortIndicatorShown(True)
+        hh.setSortIndicator(self._sort_col, Qt.SortOrder.DescendingOrder)
+        hh.sectionClicked.connect(self._sort_by_column)
+        for i, w in enumerate((175, 60, 65, 65, 100, 105, 65, 70, 135, 130)):
             self.table.setColumnWidth(i, w)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.menu)
-        lay.addWidget(self.table, 1)
+        self.table.itemSelectionChanged.connect(self.selection_changed)
+        split.addWidget(self.table)
+        inspect = QGroupBox("Process inspector")
+        il = QVBoxLayout(inspect)
+        self.inspector = QLabel("Select a process to inspect its metadata and recent resource history.")
+        self.inspector.setWordWrap(True)
+        self.inspector.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        il.addWidget(self.inspector)
+        self.cpu_graph = Sparkline()
+        self.mem_graph = Sparkline()
+        self.cpu_graph.setMinimumHeight(36)
+        self.mem_graph.setMinimumHeight(36)
+        il.addWidget(QLabel("CPU history (last 60 samples)"))
+        il.addWidget(self.cpu_graph)
+        il.addWidget(QLabel("Working-set history (last 60 samples)"))
+        il.addWidget(self.mem_graph)
+        self.details_button = QPushButton("Refresh process details")
+        self.details_button.clicked.connect(lambda: self.selection_changed(force=True))
+        il.addWidget(self.details_button)
+        self.copy_details_button = QPushButton("Copy process details")
+        self.copy_details_button.clicked.connect(self.copy_details)
+        il.addWidget(self.copy_details_button)
+        self.analyze_button = QPushButton("Analyze executable / VirusTotal")
+        self.analyze_button.setToolTip("Computes a local SHA-256 and signature status. VirusTotal lookup is an "
+                                       "explicit hash-only request; the executable is never uploaded.")
+        self.analyze_button.clicked.connect(self.analyze_selected)
+        il.addWidget(self.analyze_button)
+        self.vt_key_button = QPushButton("Set VirusTotal API key…")
+        self.vt_key_button.clicked.connect(self.set_vt_key)
+        il.addWidget(self.vt_key_button)
+        self.vt_remove_button = QPushButton("Remove saved VirusTotal key")
+        self.vt_remove_button.clicked.connect(self.remove_vt_key)
+        il.addWidget(self.vt_remove_button)
+        il.addStretch()
+        split.addWidget(inspect)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 2)
+        lay.addWidget(split, 1)
         monitor.updated.connect(self.on_snapshot)
         self.me = os.environ.get("USERNAME", "").lower()
 
@@ -191,41 +243,95 @@ class ProcessesPage(QWidget):
             return
         self.rows = s["procs"]
         if self.isVisible():
-            self.render()
+            self.render(preserve_order=True)
 
-    def render(self):
+    def _sort_key(self, row, column):
+        return {
+            0: lambda: row["name"].casefold(),
+            1: lambda: row["pid"],
+            2: lambda: row.get("ppid", 0),
+            3: lambda: row["cpu"],
+            4: lambda: row["ws"],
+            5: lambda: row["private"],
+            6: lambda: row.get("threads") or 0,
+            7: lambda: row.get("handles") or 0,
+            8: lambda: (row.get("user") or "").casefold(),
+            9: lambda: (row.get("exe") or "").casefold(),
+        }[column]()
+
+    def _sort_by_column(self, column):
+        if column == self._sort_col:
+            self._sort_descending = not self._sort_descending
+        else:
+            self._sort_col = column
+            self._sort_descending = column in (3, 4, 5, 6, 7)
+        order = Qt.SortOrder.DescendingOrder if self._sort_descending else Qt.SortOrder.AscendingOrder
+        self.table.horizontalHeader().setSortIndicator(column, order)
+        self.render(preserve_order=False)
+
+    def render(self, preserve_order=False):
         q = self.filter.text().lower().strip()
         rows = self.rows
         if self.hide_sys.isChecked():
             rows = [r for r in rows if r.get("user") and r["user"].lower().endswith("\\" + self.me)]
         if q:
             rows = [r for r in rows if q in r["name"].lower() or q == str(r["pid"]) or
-                    q in (r.get("user") or "").lower() or q in (r.get("exe") or "").lower()]
-        sel = self.selected_pid()
+                    q == str(r.get("ppid", "")) or q in (r.get("user") or "").lower() or
+                    q in (r.get("exe") or "").lower()]
+        by_pid = {r["pid"]: r for r in rows}
+        if preserve_order:
+            ordered_pids = procman.preserve_process_order(
+                self._visible_order, by_pid, lambda row: self._sort_key(row, self._sort_col),
+                reverse=self._sort_descending)
+        else:
+            ordered_pids = sorted(by_pid, key=lambda pid: self._sort_key(by_pid[pid], self._sort_col),
+                                  reverse=self._sort_descending)
+        rows = [by_pid[pid] for pid in ordered_pids]
+        selected = set(self.selected_pids())
         t = self.table
+        self._rendering = True
         t.setUpdatesEnabled(False)
-        t.setSortingEnabled(False)
-        t.setRowCount(len(rows))
-        for i, r in enumerate(rows):
-            name = QTableWidgetItem(r["name"])
-            name.setData(Qt.ItemDataRole.UserRole, r["pid"])
-            name.setToolTip(r.get("exe") or "")
-            t.setItem(i, 0, name)
-            t.setItem(i, 1, NumItem(str(r["pid"]), r["pid"]))
-            t.setItem(i, 2, NumItem(f"{r['cpu']:.1f}", r["cpu"]))
-            t.setItem(i, 3, NumItem(fmt_bytes(r["ws"]), r["ws"]))
-            t.setItem(i, 4, NumItem(fmt_bytes(r["private"]), r["private"]))
-            t.setItem(i, 5, NumItem(str(r.get("threads") or 0), r.get("threads") or 0))
-            t.setItem(i, 6, QTableWidgetItem(procman.PRIORITY_NAMES.get(r.get("nice"), "—")))
-            t.setItem(i, 7, QTableWidgetItem(r.get("user") or "—"))
-            t.setItem(i, 8, QTableWidgetItem(r.get("exe") or ""))
-        t.setSortingEnabled(True)
-        if sel is not None:
-            for i in range(t.rowCount()):
-                if t.item(i, 0).data(Qt.ItemDataRole.UserRole) == sel:
-                    t.selectRow(i)
-                    break
+        old_order = [t.item(i, 0).data(Qt.ItemDataRole.UserRole) for i in range(t.rowCount())]
+        scroll_value = t.verticalScrollBar().value()
+        if old_order == ordered_pids:
+            for i, r in enumerate(rows):
+                cells = (
+                    r["name"], str(r["pid"]), str(r.get("ppid", 0)), f"{r['cpu']:.1f}",
+                    fmt_bytes(r["ws"]), fmt_bytes(r["private"]), str(r.get("threads") or 0),
+                    str(r.get("handles") or 0), r.get("user") or "—", r.get("exe") or "",
+                )
+                keys = (None, r["pid"], r.get("ppid", 0), r["cpu"], r["ws"], r["private"],
+                        r.get("threads") or 0, r.get("handles") or 0, None, None)
+                for col, (text, key) in enumerate(zip(cells, keys)):
+                    item = t.item(i, col)
+                    item.setText(text)
+                    if key is not None:
+                        item.key = key
+                t.item(i, 0).setToolTip(r.get("exe") or "")
+        else:
+            t.setRowCount(len(rows))
+            for i, r in enumerate(rows):
+                name = QTableWidgetItem(r["name"])
+                name.setData(Qt.ItemDataRole.UserRole, r["pid"])
+                name.setToolTip(r.get("exe") or "")
+                t.setItem(i, 0, name)
+                t.setItem(i, 1, NumItem(str(r["pid"]), r["pid"]))
+                t.setItem(i, 2, NumItem(str(r.get("ppid", 0)), r.get("ppid", 0)))
+                t.setItem(i, 3, NumItem(f"{r['cpu']:.1f}", r["cpu"]))
+                t.setItem(i, 4, NumItem(fmt_bytes(r["ws"]), r["ws"]))
+                t.setItem(i, 5, NumItem(fmt_bytes(r["private"]), r["private"]))
+                t.setItem(i, 6, NumItem(str(r.get("threads") or 0), r.get("threads") or 0))
+                t.setItem(i, 7, NumItem(str(r.get("handles") or 0), r.get("handles") or 0))
+                t.setItem(i, 8, QTableWidgetItem(r.get("user") or "—"))
+                t.setItem(i, 9, QTableWidgetItem(r.get("exe") or ""))
+            t.verticalScrollBar().setValue(scroll_value)
+        self._visible_order = ordered_pids
+        for i in range(t.rowCount()):
+            if t.item(i, 0).data(Qt.ItemDataRole.UserRole) in selected:
+                t.selectRow(i)
         t.setUpdatesEnabled(True)
+        self._rendering = False
+        self.selection_changed()
 
     # ---------------------------------------------------------- actions
     def selected_pid(self):
@@ -233,6 +339,162 @@ class ProcessesPage(QWidget):
         if not items:
             return None
         return self.table.item(items[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+
+    def selected_pids(self):
+        return list(dict.fromkeys(
+            self.table.item(index.row(), 0).data(Qt.ItemDataRole.UserRole)
+            for index in self.table.selectionModel().selectedRows()))
+
+    def selection_changed(self, *_args, force=False):
+        if self._rendering:
+            return
+        pids = self.selected_pids()
+        pid = pids[0] if pids else None
+        if pid is None:
+            self._details_pid = None
+            self.inspector.setText("Select a process to inspect its metadata and recent resource history.")
+            self.cpu_graph.set_data([], 100)
+            self.mem_graph.set_data([], 1)
+            return
+        row = next((item for item in self.rows if item["pid"] == pid), None)
+        if row:
+            history = row.get("history", {})
+            self.cpu_graph.set_data(history.get("cpu", []), 100)
+            mem = history.get("memory", [])
+            self.mem_graph.set_data(mem, max(mem, default=1))
+            compare_rows = [item for item in self.rows if item["pid"] in pids]
+            total_cpu = sum(item["cpu"] for item in compare_rows)
+            total_memory = sum(item["ws"] for item in compare_rows)
+            self.inspector.setText(
+                f"<b>{html.escape(row['name'])} (PID {pid})</b><br>"
+                f"CPU {row['cpu']:.1f}% &nbsp; Working set {fmt_bytes(row['ws'])}<br>"
+                f"Private memory {fmt_bytes(row['private'])} &nbsp; Threads {row.get('threads') or 0}<br>"
+                f"Selected total: {total_cpu:.1f}% CPU &nbsp; {fmt_bytes(total_memory)} working set "
+                f"across {len(compare_rows)} process(es).")
+        if self._details_pid == pid and not force:
+            return
+        self._details_pid = pid
+        run_async(self, procman.process_details, pid,
+                  on_done=lambda result, selected=pid: self._details_ready(selected, result))
+
+    def _details_ready(self, pid, details):
+        if pid != self.selected_pid():
+            return
+        self._process_details = details
+        row = next((item for item in self.rows if item["pid"] == pid), {})
+        history = row.get("history", {})
+        memory = history.get("memory", [])
+        self.cpu_graph.set_data(history.get("cpu", []), 100)
+        self.mem_graph.set_data(memory, max(memory, default=1))
+        parent = details.get("parent")
+        parent_text = (f"{html.escape(parent['name'])} (PID {parent['pid']})"
+                       if parent else "Unavailable or no parent")
+        handles = details.get("handles")
+        self.inspector.setText(
+            f"<b>{html.escape(details['name'])} (PID {pid})</b><br>"
+            f"Status: {html.escape(details['status'])} &nbsp; "
+            f"Architecture: {html.escape(details.get('architecture', 'Unavailable'))}<br>"
+            f"User: {html.escape(details['user'])}<br>Started: {html.escape(details['started'])}<br>"
+            f"Parent: {parent_text}<br>Threads: {details['threads'] or 'Unavailable'} &nbsp; "
+            f"Handles: {handles if handles is not None else 'Unavailable'}<br>"
+            f"Working set: {fmt_bytes(details['working_set'])} &nbsp; "
+            f"Private: {fmt_bytes(details['private']) if details['private'] is not None else 'Unavailable'}<br>"
+            f"Path: {html.escape(details['path'] or 'Unavailable')}<br>"
+            f"Command line: {html.escape(details['command_line'])}")
+
+    def copy_details(self):
+        details = getattr(self, "_process_details", None)
+        if details and details.get("pid") == self.selected_pid():
+            QGuiApplication.clipboard().setText("\n".join(
+                f"{key}: {value}" for key, value in details.items()))
+            self.status("Process details copied to clipboard.")
+        else:
+            QMessageBox.information(self, "TaskForge", "Select a process and wait for its details to load.")
+
+    def set_vt_key(self):
+        from PyQt6.QtWidgets import QInputDialog
+        key, accepted = QInputDialog.getText(
+            self, "VirusTotal API key", "TaskForge stores this key using Windows DPAPI. It is never logged. "
+                                       "The key is sent only to VirusTotal when you explicitly request a lookup.",
+            QLineEdit.EchoMode.Password)
+        if accepted and key.strip():
+            run_async(self, self.vt.verify_key, key,
+                      on_done=lambda _result: QMessageBox.information(
+                          self, "VirusTotal", "API key verified and saved with Windows DPAPI."))
+
+    def remove_vt_key(self):
+        self.vt.store.clear()
+        self.vt.cache.clear()
+        self.status("Saved VirusTotal key removed.")
+
+    def analyze_selected(self):
+        details = getattr(self, "_process_details", None)
+        if not details or details.get("pid") != self.selected_pid():
+            QMessageBox.information(self, "TaskForge", "Select a process and wait for its details to load.")
+            return
+        path = details.get("path")
+        if not path:
+            QMessageBox.warning(self, "TaskForge", "Windows did not provide an executable path for this process.")
+            return
+        self.analyze_button.setEnabled(False)
+        run_async(self, procman.analyze_executable, path,
+                  on_done=lambda result: self._analysis_ready(result),
+                  on_fail=lambda message: self._analysis_failed(message))
+
+    def _analysis_failed(self, message):
+        self.analyze_button.setEnabled(True)
+        QMessageBox.warning(self, "TaskForge", message)
+
+    def _analysis_ready(self, result):
+        self.analyze_button.setEnabled(True)
+        signals = "\n".join(f"• {signal}" for signal in result["signals"])
+        answer = QMessageBox(self)
+        answer.setWindowTitle("Local executable analysis")
+        answer.setTextFormat(Qt.TextFormat.PlainText)
+        answer.setText(f"SHA-256: {result['sha256']}\nSignature: {result['signature_status']}\n"
+                       f"Publisher: {result['publisher']}\n\nContext signals (not a malware verdict):\n{signals}")
+        lookup = answer.addButton("Look up hash on VirusTotal…", QMessageBox.ButtonRole.AcceptRole)
+        browser = answer.addButton("Search hash in browser…", QMessageBox.ButtonRole.ActionRole)
+        copy = answer.addButton("Copy SHA-256", QMessageBox.ButtonRole.ActionRole)
+        answer.addButton(QMessageBox.StandardButton.Close)
+        answer.exec()
+        if answer.clickedButton() is copy:
+            QGuiApplication.clipboard().setText(result["sha256"])
+            return
+        if answer.clickedButton() is browser:
+            import webbrowser
+            webbrowser.open("https://www.virustotal.com/gui/search?query=" + result["sha256"])
+            return
+        if answer.clickedButton() is not lookup:
+            return
+        try:
+            key = self.vt.store.load()
+        except VirusTotalError as exc:
+            QMessageBox.warning(self, "VirusTotal", str(exc))
+            return
+        if not key:
+            QMessageBox.information(
+                self, "VirusTotal",
+                "No key is configured. You can copy the hash or set a key to request a report. "
+                "A public browser search is also available from the process context menu.")
+            return
+        if not confirm(self, "VirusTotal privacy notice",
+                       "Send this SHA-256 hash to VirusTotal for a report lookup? The executable itself "
+                       "and its contents will not be uploaded. VirusTotal receives the hash and request metadata."):
+            return
+        run_async(self, self.vt.lookup_hash, result["sha256"], on_done=self._vt_result,
+                  on_fail=lambda message: QMessageBox.warning(self, "VirusTotal", message))
+
+    def _vt_result(self, result):
+        QMessageBox.information(
+            self, "VirusTotal hash report",
+            f"Latest analysis: {result['malicious']} malicious, {result['suspicious']} suspicious, "
+            f"{result['undetected']} undetected.\nChecked: {result['checked_at']}"
+            f"{' (session cache)' if result.get('cached') else ''}.\n\nThese are third-party engine results, not a definitive "
+            "malware verdict. Choose 'Open report' only if you want to contact VirusTotal in your browser.")
+        import webbrowser
+        if confirm(self, "Open VirusTotal report", "Open the hash report in your default browser?"):
+            webbrowser.open(result["link"])
 
     def _target(self):
         pid = self.selected_pid()
@@ -283,14 +545,36 @@ class ProcessesPage(QWidget):
             self._do(lambda: procman.resume(pid), f"Resumed {name}")
 
     def trim(self):
-        pid, name = self._target()
-        if pid is None:
+        pids = self.selected_pids()
+        if not pids:
+            self._target()
             return
-        ok = procman.trim_working_set(pid)
-        if ok:
-            self.status(f"Trimmed working set of {name}")
-        else:
-            QMessageBox.warning(self, "TaskForge", f"Could not trim {name}: access denied (try running as admin).")
+        if len(pids) > 1 and not editions.can("advanced"):
+            QMessageBox.information(self, "Advanced feature",
+                                    "Bulk process trimming is available in Free with Ads, Supporter, and Pro. "
+                                    "Select one process to use the core trim tool.")
+            return
+        names = [r["name"] for r in self.rows if r["pid"] in pids]
+        if not confirm(self, "Trim working sets",
+                       f"Ask Windows to trim {len(pids)} selected process working set(s)? "
+                       "This does not free memory permanently; applications may page data back in, "
+                       "which can temporarily slow them down. Protected processes are skipped."):
+            return
+        run_async(self, procman.trim_process_batch, pids, on_done=self._trim_done)
+
+    def _trim_done(self, results):
+        lines = []
+        total = 0
+        for result in results:
+            if "error" in result:
+                lines.append(f"PID {result['pid']} {result['name']}: {result['error']}")
+            else:
+                total += result["reclaimed"]
+                lines.append(f"PID {result['pid']} {result['name']}: {fmt_bytes(result['before'])} → "
+                             f"{fmt_bytes(result['after'])}, measured decrease {fmt_bytes(result['reclaimed'])}")
+        self.status(f"Trim requests finished; measured working-set decrease {fmt_bytes(total)}.")
+        QMessageBox.information(self, "Trim results", "\n".join(lines) +
+                                "\n\nWorking-set changes are temporary and are not guaranteed performance gains.")
 
     def eco(self):
         pid, name = self._target()
@@ -352,7 +636,9 @@ class ProcessesPage(QWidget):
                          ("Suspend", self.suspend), ("Resume", self.resume), ("Trim working set", self.trim),
                          ("Efficiency mode…", self.eco), ("Affinity…", self.affinity), (None, None),
                          ("Open file location", self.open_loc), ("Copy path", self.copy_path),
-                         ("Search online", self.search)):
+                         ("Copy process details", self.copy_details), ("Analyze executable / VirusTotal…",
+                                                                       self.analyze_selected),
+                         ("Search process online", self.search)):
             if text is None:
                 m.addSeparator()
             else:
