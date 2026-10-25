@@ -23,8 +23,10 @@ GPU/network per-process graphs, process dumps and service management are not inc
 ## Editions and verification
 
 The GitHub prerelease contains Free and Free with Ads ZIP packages, their SHA-256 manifest, Sigstore keyless bundles,
-and GitHub build provenance. Supporter and Pro ZIPs are private local Gumroad upload candidates; they have SHA-256
-checksums but no claimed Sigstore signature because they were not uploaded to the signing workflow.
+and GitHub build provenance. Supporter and Pro ZIPs are built and keylessly signed by the separate private
+TaskForge-Distribution workflow, verified against its exact GitHub Actions identity, and retained as a private
+Actions artifact for seven days. They are not attached to the public release. Use the private signed ZIPs for
+Gumroad uploads.
 
 The separate `UNLOCKED-BETA-TEST-NOT-FOR-DISTRIBUTION` Pro test build and ZIP are owner-only evaluation files.
 Never upload them to Gumroad or distribute them.

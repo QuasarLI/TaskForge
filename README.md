@@ -111,9 +111,11 @@ activate. The binaries still remain locked until a customer enters a matching va
 
 Pushing a `v*` tag runs `.github/workflows/release.yml`. GitHub Actions builds on Windows, runs tests and the safe
 self-test, produces Free and Free-with-Ads ZIPs, generates SHA-256 checksums, creates keyless Sigstore bundles with
-GitHub OIDC, attests build provenance, and publishes those ZIPs as a prerelease. Paid ZIPs remain private local
-Gumroad upload files. They are checksummed but not Sigstore-signed: this workflow cannot use GitHub OIDC to sign
-private local files without uploading them.
+GitHub OIDC, attests build provenance, and publishes those ZIPs as a prerelease. Supporter/Pro packages are built
+and keylessly signed by the separate private [TaskForge-Distribution](https://github.com/QuasarLI/TaskForge-Distribution)
+workflow, verified against its exact GitHub Actions identity, and retained as a private Actions artifact for seven
+days. They are not attached to the public release. The four-edition local build script also produces convenient
+unsigned local ZIPs; for Gumroad upload, use the signed Supporter/Pro ZIPs from the private pipeline.
 
 Verify a downloaded file after installing `cosign`:
 
