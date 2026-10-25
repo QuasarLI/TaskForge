@@ -34,6 +34,39 @@ def cpu_vendor_family(name: str, vendor: str) -> str:
     return "other"
 
 
+_FIRMWARE_PLACEHOLDERS = {
+    "default string", "to be filled by o.e.m.", "to be filled by oem",
+    "system product name", "unknown", "not specified", "none", "n/a",
+}
+
+
+def sanitize_firmware_value(value):
+    """Convert common unprogrammed SMBIOS/firmware placeholders to unavailable."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    normalized = " ".join(text.casefold().split())
+    if not normalized or normalized in _FIRMWARE_PLACEHOLDERS:
+        return None
+    compact = normalized.replace(" ", "").replace("-", "").replace(".", "")
+    if compact and not compact.strip("0"):
+        return None
+    return text
+
+
+def sanitize_hardware_inventory(data):
+    for group, fields in {
+        "system": ("Manufacturer", "Model"),
+        "board": ("Manufacturer", "Product"),
+        "bios": ("Manufacturer", "SMBIOSBIOSVersion", "SerialNumber"),
+    }.items():
+        record = data.get(group)
+        if isinstance(record, dict):
+            for field in fields:
+                record[field] = sanitize_firmware_value(record.get(field))
+    return data
+
+
 def is_unlocked_cpu(name: str) -> bool:
     """Best-effort guess from the model string (Intel 'K'/'X' SKUs, AMD Ryzen)."""
     import re
@@ -53,6 +86,12 @@ $o.system = Get-CimInstance Win32_ComputerSystem | Select-Object -First 1 Manufa
 $o.dimms = @(Get-CimInstance Win32_PhysicalMemory | Select-Object Manufacturer,PartNumber,Capacity,Speed,ConfiguredClockSpeed,DeviceLocator)
 $o.pagefiles = @(Get-CimInstance Win32_PageFileUsage | Select-Object Name,AllocatedBaseSize,CurrentUsage,PeakUsage)
 $o.disks = @(Get-PhysicalDisk | Select-Object FriendlyName,MediaType,BusType,Size)
+$o.volumes = @(Get-Volume | Where-Object DriveLetter | ForEach-Object {
+  $v=$_; $p=Get-Partition -DriveLetter $v.DriveLetter -ErrorAction SilentlyContinue | Select-Object -First 1
+  $d=if($p){Get-Disk -Number $p.DiskNumber -ErrorAction SilentlyContinue}
+  [pscustomobject]@{Drive=[string]$v.DriveLetter;FileSystem=[string]$v.FileSystem;
+    MediaType=[string]$d.MediaType;BusType=[string]$d.BusType;HealthStatus=[string]$d.HealthStatus}
+})
 $o | ConvertTo-Json -Depth 4 -Compress
 """
 
@@ -66,13 +105,13 @@ def hardware_inventory() -> dict:
         data = json.loads(out)
     except ValueError:
         return {}
-    for key in ("dimms", "pagefiles", "disks"):
+    for key in ("dimms", "pagefiles", "disks", "volumes"):
         val = data.get(key)
         if isinstance(val, dict):
             data[key] = [val]
         elif val is None:
             data[key] = []
-    return data
+    return sanitize_hardware_inventory(data)
 
 
 # ------------------------------------------------------- Live effective clock

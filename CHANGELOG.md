@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.3.0-beta.1 - 2026-10-24
+
+- Reworked Processes into a sortable, filterable advanced process list with parent PID, CPU, memory, handles, user,
+  path, a selected-process inspector, and 60-sample CPU/working-set sparklines.
+- Added on-demand command line, architecture, status, start time, parent, thread/handle and memory details, plus
+  measured working-set trim results with protected-process exclusions and visible per-process failures.
+- Added local SHA-256, Authenticode publisher/status and explainable path signals; none is presented as a malware
+  verdict.
+- Added opt-in VirusTotal v3 hash reports with a DPAPI-protected local key, explicit disclosure/confirmation,
+  session-only result cache and no binary upload.
+- Improved pagefile target checks, drive media/bus/health context when Windows reports it, and plain-language notes
+  that Windows has no pagefile priority or speed-class setting.
+- Sanitized common empty/default SMBIOS values and added system/board fallback labels.
+- Enriched dashboard uptime/system-drive summary and added optional 15-second rotating tray hover text.
+- Preserved all ten themes, edition gates, safety protections and Windows-native reversible settings; documented
+  current gaps versus kernel-level Process Explorer and Task Manager.
+- Added mocked VirusTotal, process-history/risk, firmware-sanitization and pagefile-validation tests.
+
+`v2.3.0-beta.1` is a real prerelease for early evaluation. Public packages are Free and Free with Ads; paid upload
+packages and the unlocked owner test build are kept separate from the public release.
+
 ## 2.2.0-beta.1 - 2026-10-24
 
 - Added a crisp, beginner-friendly System Health page with live CPU, RAM, commit, and top-process insights.

@@ -1,4 +1,5 @@
 """CPU & Turbo, Overclocking guide, Startup and Settings pages."""
+import html
 import os
 import subprocess
 import webbrowser
@@ -424,10 +425,16 @@ def build_oc_guide(monitor, settings_get):
         mem = ", ".join(f"{fmt_bytes(int(d.get('Capacity') or 0))} @ {d.get('ConfiguredClockSpeed') or d.get('Speed')} "
                         f"MT/s ({(d.get('Manufacturer') or '').strip()})" for d in dimms) or "n/a"
         kind = {1: "Desktop", 2: "Laptop / mobile", 3: "Workstation"}.get(sysd.get("PCSystemType"), "Unknown")
+        system_label = " ".join(filter(None, (sysd.get("Manufacturer"), sysd.get("Model"))))
+        if not system_label:
+            system_label = " ".join(filter(None, (b.get("Manufacturer"), b.get("Product"))))
+        system_label = system_label or "Not reported by firmware"
+        board_label = " ".join(filter(None, (b.get("Manufacturer"), b.get("Product"))))
+        bios_label = " ".join(filter(None, (bios.get("Manufacturer"), bios.get("SMBIOSBIOSVersion"))))
         holder["hw"].setText(
-            f"<b>System:</b> {sysd.get('Manufacturer', '')} {sysd.get('Model', '')} ({kind})<br>"
-            f"<b>Motherboard:</b> {b.get('Manufacturer', 'n/a')} {b.get('Product', '')}<br>"
-            f"<b>BIOS:</b> {bios.get('Manufacturer', '')} {bios.get('SMBIOSBIOSVersion', '')}<br>"
+            f"<b>System:</b> {html.escape(system_label)} ({kind})<br>"
+            f"<b>Motherboard:</b> {html.escape(board_label or 'Not reported by firmware')}<br>"
+            f"<b>BIOS:</b> {html.escape(bios_label or 'Not reported by firmware')}<br>"
             f"<b>Memory modules:</b> {mem}")
 
     page.set_inventory = set_inventory
@@ -575,7 +582,8 @@ class SettingsPage(QWidget):
             bl.addLayout(row)
             for key, text in (("minimize_to_tray", "Minimize to system tray"),
                               ("close_to_tray", "Close button hides to tray (exit from the tray menu)"),
-                              ("start_minimized", "Start minimized to tray")):
+                              ("start_minimized", "Start minimized to tray"),
+                              ("tray_summary", "Rotate concise system summary in tray hover text (every 15 seconds)")):
                 cb = QCheckBox(text)
                 cb.setChecked(bool(settings.get(key)))
                 cb.toggled.connect(lambda v, k=key: settings.set(k, v))

@@ -84,6 +84,9 @@ class ActivationStore:
 
 
 def verify_license(product_permalink, license_key, product_id=None, opener=urllib.request.urlopen):
+    from . import editions
+    if editions.is_test_build():
+        raise LicenseError("This unlocked test build does not accept or verify production licenses.")
     if product_permalink not in ("ncbdzb", "uojwbi"):
         raise LicenseError("Unknown TaskForge product.")
     if not license_key or len(license_key.strip()) < 8:

@@ -1,6 +1,7 @@
 """TaskForge main window, tray integration and entry point."""
 import ctypes
 import sys
+import time
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
@@ -15,7 +16,7 @@ from .pages_proc import DashboardPage, ProcessesPage
 from .pages_sys import CpuPage, SettingsPage, StartupPage, build_oc_guide
 from .themes import palette, stylesheet
 from .util import Settings, is_admin, relaunch_as_admin
-from .widgets import Monitor, run_async, shutdown_workers
+from .widgets import Monitor, run_async, shutdown_workers, workers_running
 
 NAV = ["Dashboard", "System Health", "Processes", "Memory", "CPU & Turbo", "Overclocking Guide", "Startup",
        "Settings", "Edition & Resources"]
@@ -26,6 +27,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = settings
         self.really_quit = False
+        self._tray_tip_index = 0
+        self._next_tray_tip_at = 0
         self.setWindowTitle(f"{__app_name__} {editions.info()['name']} — System Control Center")
         self.resize(1320, 860)
         self.setMinimumSize(1050, 680)
@@ -131,8 +134,22 @@ class MainWindow(QMainWindow):
         self.chip_clk.setText(f"{s['mhz']/1000:.2f} GHz")
         self.chip_ram.setText(f"RAM {s['vm'].percent:.0f}%")
         if hasattr(self, "tray"):
-            self.tray.setToolTip(f"TaskForge — CPU {s['cpu']:.0f}% • RAM {s['vm'].percent:.0f}% • "
-                                 f"{s['mhz']/1000:.2f} GHz")
+            if not self.settings.get("tray_summary"):
+                self.tray.setToolTip("TaskForge — system monitoring")
+            elif time.monotonic() >= self._next_tray_tip_at:
+                top = max((p for p in s["procs"] if p["pid"] not in (0, 4)),
+                          key=lambda p: p["cpu"], default=None)
+                uptime = s["uptime_seconds"]
+                days, hours = divmod(uptime // 3600, 24)
+                tips = [
+                    f"TaskForge | CPU {s['cpu']:.0f}% | RAM {s['vm'].percent:.0f}% | {s['mhz']/1000:.2f} GHz",
+                    (f"TaskForge | Top CPU: {top['name'][:20]} {top['cpu']:.1f}%"
+                     if top else "TaskForge | No process CPU sample"),
+                    f"TaskForge | Up {days}d {hours}h | {len(s['procs'])} processes",
+                ]
+                self.tray.setToolTip(tips[self._tray_tip_index % len(tips)][:120])
+                self._tray_tip_index += 1
+                self._next_tray_tip_at = time.monotonic() + 15
 
     def _inventory(self, inv):
         if not inv:
@@ -258,9 +275,18 @@ def _selftest(app, win):
         else:
             s = win.monitor.last
             result["ok"] = bool(s and s["procs"] and s["vm"].total)
-            print(f"SELFTEST pages={len(NAV)} procs={len(s.get('procs', []))} cpu={s.get('cpu', 0):.0f}% "
-                  f"mhz={s.get('mhz')} ok={result['ok']}", flush=True)
-            win.quit()
+            if sys.stdout is not None:
+                print(f"SELFTEST pages={len(NAV)} procs={len(s.get('procs', []))} cpu={s.get('cpu', 0):.0f}% "
+                      f"mhz={s.get('mhz')} ok={result['ok']}", flush=True)
+            win.monitor.timer.stop()
+
+            def quit_after_workers():
+                if workers_running():
+                    QTimer.singleShot(100, quit_after_workers)
+                else:
+                    win.quit()
+
+            QTimer.singleShot(0, quit_after_workers)
 
     QTimer.singleShot(3500, visit)
     app.exec()

@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QButtonGroup, QComboBox, QGridLa
 from . import editions, pagefile, procman
 from .procman import OpError
 from .util import fmt_bytes, is_admin
-from .widgets import NumItem, bar, confirm, explain, page_header
+from .widgets import NumItem, bar, confirm, explain, page_header, run_async
 
 
 class MemoryPage(QWidget):
@@ -156,8 +156,11 @@ class MemoryPage(QWidget):
             "avoids growth fragmentation but can cause out-of-memory errors if set too small; “System managed” is the "
             "safest choice for most people. The recommendation is based on this session's peak commit. "
             "Changes are written to HKLM\\…\\Memory Management\\PagingFiles exactly like the Windows dialog, the old "
-            "value is backed up first, and they take effect after a restart. Faster paging ultimately means a "
-            "faster drive or more RAM — software can't make the disk itself quicker."))
+            "value is backed up first, and they take effect after a restart. Windows does not expose "
+            "a pagefile priority or speed setting; it chooses paging behavior. Multiple pagefiles "
+            "do not guarantee faster paging. Faster paging ultimately means a faster drive or more "
+            "RAM — software cannot make the disk itself quicker. Keep enough free space for crash "
+            "dump requirements if you rely on kernel or complete dumps."))
         lay.addWidget(pg)
         lay.addStretch()
 
@@ -245,9 +248,16 @@ class MemoryPage(QWidget):
         if not name:
             return
         pids = self.groups.get(name, {}).get("pids", [])
-        ok = sum(procman.trim_working_set(p) for p in pids)
-        self.status(f"Trimmed {ok}/{len(pids)} instances of {name}"
-                    + ("" if ok == len(pids) else " (others need admin)"))
+        if len(pids) > 1 and not editions.can("advanced"):
+            QMessageBox.information(self, "Advanced feature",
+                                    "Trimming multiple app instances requires Free with Ads, Supporter, or Pro.")
+            return
+        if not confirm(self, "Trim app working sets",
+                       f"Ask Windows to trim {len(pids)} instance(s) of {name}? Data may be paged back in "
+                       "when those apps are used, which can temporarily slow them down."):
+            return
+        run_async(self, procman.trim_process_batch, pids,
+                  on_done=lambda results: self._trim_results(results, name))
 
     def trim_all(self):
         if not editions.can("advanced"):
@@ -255,20 +265,33 @@ class MemoryPage(QWidget):
                                     "Bulk background trimming requires Free with Ads or Supporter/Pro.")
             return
         if not confirm(self, "Trim background apps",
-                       "Trim the working sets of all processes except TaskForge and the app you're focused on?\n\n"
-                       "Free RAM will jump, but apps will briefly page memory back in when used. This is safe "
-                       "but is not a permanent speed boost."):
+                       "Request a working-set trim for every accessible process except TaskForge? Windows-critical "
+                       "processes are explicitly excluded.\n\nThis can reclaim resident memory temporarily, but "
+                       "applications may page data back in when used and run slower. It is not a permanent speed boost."):
             return
         before = psutil.virtual_memory().available
-        ok = n = 0
-        for p in psutil.process_iter(["pid"]):
-            if p.pid in (0, 4, os.getpid()):
-                continue
-            n += 1
-            ok += procman.trim_working_set(p.pid)
-        after = psutil.virtual_memory().available
-        self.status(f"Trimmed {ok}/{n} processes; available RAM {fmt_bytes(before)} → {fmt_bytes(after)}"
-                    + ("" if is_admin() else " (run as admin to include system services)"))
+        pids = [p.pid for p in psutil.process_iter(["pid"]) if p.pid not in (0, 4, os.getpid())]
+        self.status(f"Requesting working-set trims for {len(pids)} processes…")
+        run_async(self, procman.trim_process_batch, pids,
+                  on_done=lambda results: self._trim_results(results, "background processes", before))
+
+    def _trim_results(self, results, label, available_before=None):
+        succeeded = [r for r in results if "error" not in r]
+        failures = [r for r in results if "error" in r]
+        reclaimed = sum(r["reclaimed"] for r in succeeded)
+        detail = (f"Trimmed {len(succeeded)}/{len(results)} {label}; measured decrease in resident "
+                  f"working sets: {fmt_bytes(reclaimed)}.")
+        if available_before is not None:
+            detail += (f"\nAvailable physical memory: {fmt_bytes(available_before)} → "
+                       f"{fmt_bytes(psutil.virtual_memory().available)}. This system-wide change is not "
+                       "necessarily attributable only to these trim requests.")
+        if failures:
+            detail += "\n\nSome processes were protected or inaccessible:\n" + "\n".join(
+                f"PID {r['pid']} {r['name']}: {r['error']}" for r in failures[:20])
+            if len(failures) > 20:
+                detail += f"\n…and {len(failures) - 20} additional process(es) could not be trimmed."
+        self.status(detail.splitlines()[0])
+        QMessageBox.information(self, "Working-set trim results", detail)
 
     # ------------------------------------------------------------- pagefile
     def load_pagefile(self):
@@ -278,13 +301,20 @@ class MemoryPage(QWidget):
             self.pf_current.setText(f"Could not read pagefile config: {e}")
             return
         usage = {(u.get("Name") or "").lower(): u for u in getattr(self, "inventory", {}).get("pagefiles", [])}
+        volumes = {str(v.get("Drive") or "").upper(): v
+                   for v in getattr(self, "inventory", {}).get("volumes", [])}
         parts = []
         for e in entries:
             u = usage.get(e["path"].lower())
             use = f" — in use {u['CurrentUsage']} MB of {u['AllocatedBaseSize']} MB (peak {u['PeakUsage']} MB)" if u else ""
+            volume = volumes.get(e["path"][:1].upper(), {})
+            media = ", ".join(f"{label}: {volume[field]}" for field, label in (
+                ("MediaType", "media"), ("BusType", "bus"), ("HealthStatus", "health")
+            ) if volume.get(field))
+            media_text = f" — volume {media}" if media else ""
             desc = {"auto": "Windows managed (automatic)", "system": "system managed size",
                     "custom": f"custom {e['initial_mb']:,}–{e['max_mb']:,} MB"}[e["mode"]]
-            parts.append(f"<b>{e['path']}</b>: {desc}{use}")
+            parts.append(f"<b>{e['path']}</b>: {desc}{use}{media_text}")
         self.pf_current.setText("Current configuration: " + ("<br>".join(parts) if parts else "<b>No pagefile</b> "
                                 "(not recommended)") + ("<br>Clear pagefile at shutdown: <b>on</b> (secure but slows "
                                 "shutdown)" if pagefile.read_clear_at_shutdown() else ""))
@@ -323,7 +353,13 @@ class MemoryPage(QWidget):
         if mode == "custom" and self.max_mb.value() < self.init_mb.value():
             QMessageBox.warning(self, "TaskForge", "Maximum size must be ≥ initial size.")
             return
-        line = pagefile.build_line(mode, drive, self.init_mb.value(), self.max_mb.value())
+        try:
+            if mode != "auto":
+                pagefile.validate_fixed_local_drive(drive)
+            line = pagefile.build_line(mode, drive, self.init_mb.value(), self.max_mb.value())
+        except ValueError as e:
+            QMessageBox.warning(self, "Unsupported pagefile target", str(e))
+            return
         if not confirm(self, "Apply pagefile", f"Set PagingFiles to:\n\n    {line}\n\nThe current value is backed up "
                                                "first. Takes effect after you restart Windows. Continue?"):
             return
