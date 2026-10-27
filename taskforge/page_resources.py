@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessage
 
 from . import __version__, editions, licensing
 from .util import app_data_dir
-from .widgets import explain, page_header
+from .widgets import explain, page_header, page_layout
 
 ADS = [
     ("AdGuard", "Block intrusive ads and trackers", "https://adguard.com/?aid=138471"),
@@ -35,7 +35,7 @@ class ResourcesPage(QWidget):
         body = QWidget()
         scroll.setWidget(body)
         lay = QVBoxLayout(body)
-        lay.setContentsMargins(22, 18, 22, 12)
+        page_layout(lay)
         lay.addWidget(page_header("Edition & Resources",
                                   f"TaskForge {self.policy['name']} {__version__} - clear choices, no dark patterns."))
         self.state = QLabel()

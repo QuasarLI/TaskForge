@@ -7,21 +7,28 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QGuiApplication
 from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox, QGridLayout, QGroupBox,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMenu, QMessageBox, QPushButton,
-                             QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+                             QScrollArea, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from . import editions, procman
 from .procman import OpError
 from .util import fmt_bytes
 from .virustotal import VirusTotalClient, VirusTotalError
-from .widgets import MetricCard, NumItem, Sparkline, bar, confirm, explain, page_header, run_async
+from .widgets import MetricCard, NumItem, Sparkline, bar, confirm, explain, page_header, page_layout, run_async
 
 
 class DashboardPage(QWidget):
     def __init__(self, monitor, palette):
         super().__init__()
         self.monitor = monitor
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(22, 18, 22, 12)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        outer.addWidget(scroll)
+        body = QWidget()
+        scroll.setWidget(body)
+        lay = QVBoxLayout(body)
+        page_layout(lay)
         ident = monitor.ident
         lay.addWidget(page_header("Dashboard", f"{ident['name']}  •  {ident['cores']} cores / "
                                                f"{ident['threads']} threads  •  base {ident['base_mhz']} MHz"))
@@ -147,7 +154,7 @@ class ProcessesPage(QWidget):
         self._sort_col = 4
         self._sort_descending = True
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(22, 18, 22, 12)
+        page_layout(lay)
         self.vt = VirusTotalClient()
         lay.addWidget(page_header("Processes", "Inspect live CPU and memory use, select a process for details, or "
                                                "right-click for controls. System-process protections remain active."))

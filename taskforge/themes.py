@@ -1,4 +1,4 @@
-"""Theme palettes and the Qt stylesheet template they fill."""
+"""Theme palettes and shared visual-system tokens for the Qt stylesheet."""
 
 THEMES = {
     "Midnight Violet": dict(bg="#0b0d12", panel="#12151e", card="#151a26", border="#232a3b", text="#e8edf5",
@@ -33,62 +33,137 @@ THEMES = {
                                danger="#f87171", ok="#4ade80", warn="#fbbf24", sel="#314d73"),
 }
 
+TOKENS = {
+    "space_1": 4,
+    "space_2": 8,
+    "space_3": 12,
+    "space_4": 16,
+    "space_5": 24,
+    "space_6": 32,
+    "radius_control": 7,
+    "radius_card": 11,
+    "radius_panel": 14,
+    "control_height": 34,
+    "table_row_height": 34,
+}
+
+
+def _luminance(color: str) -> float:
+    channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+              for value in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast_foreground(color: str) -> str:
+    """Choose readable button text for either light or dark theme accents."""
+    return "#111827" if _luminance(color) > 0.38 else "#ffffff"
+
+
+def design_tokens(name: str) -> dict:
+    colors = THEMES.get(name, THEMES["Midnight Violet"])
+    return {
+        **TOKENS,
+        **colors,
+        "accent_text": contrast_foreground(colors["accent"]),
+        "accent2_text": contrast_foreground(colors["accent2"]),
+        "danger_text": contrast_foreground(colors["danger"]),
+        "ok_text": contrast_foreground(colors["ok"]),
+        "warn_text": contrast_foreground(colors["warn"]),
+        "selected_text": contrast_foreground(colors["sel"]),
+    }
+
+
 QSS = """
 * {{ font-family: 'Segoe UI'; font-size: 10pt; color: {text}; }}
 QMainWindow, QDialog {{ background: {bg}; }}
 QWidget#Root, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {{ background: {bg}; }}
-QToolTip {{ background: {card}; color: {text}; border: 1px solid {accent}; padding: 6px; }}
+QToolTip {{ background: {card}; color: {text}; border: 1px solid {border}; border-radius: {radius_control}px;
+    padding: {space_2}px {space_3}px; }}
 
-#Header {{ background: {panel}; border-bottom: 1px solid {border}; }}
-#HeaderTitle {{ font-size: 15pt; font-weight: 800; letter-spacing: 3px; }}
-#HeaderSub {{ color: {muted}; font-size: 8.5pt; }}
-#Chip {{ background: {card}; border: 1px solid {border}; border-radius: 11px; padding: 3px 10px;
+#Header {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 {panel}, stop:1 {bg});
+    border-bottom: 1px solid {border}; }}
+#HeaderTitle {{ font-size: 15pt; font-weight: 800; }}
+#HeaderSub {{ color: {muted}; font-size: 9pt; }}
+#Chip {{ background: {card}; border: 1px solid {border}; border-radius: 12px; padding: 4px 10px;
          color: {muted}; font-weight: 600; }}
-#ChipAdmin {{ background: {ok}; color: #0b0d12; border-radius: 11px; padding: 3px 10px; font-weight: 700; }}
-#ChipUser {{ background: {warn}; color: #0b0d12; border-radius: 11px; padding: 3px 10px; font-weight: 700; }}
+#ChipAdmin {{ background: {ok}; color: {ok_text}; border-radius: 12px; padding: 4px 10px; font-weight: 700; }}
+#ChipUser {{ background: {warn}; color: {warn_text}; border-radius: 12px; padding: 4px 10px; font-weight: 700; }}
 
-#Sidebar {{ background: {panel}; border-right: 1px solid {border}; }}
-#Sidebar QPushButton {{ background: transparent; color: {muted}; text-align: left; padding: 10px 16px;
-    border: none; border-left: 3px solid transparent; font-weight: 600; font-size: 10.5pt; }}
-#Sidebar QPushButton:hover {{ background: {hover}; color: {text}; }}
-#Sidebar QPushButton:checked {{ background: {hover}; color: {accent}; border-left: 3px solid {accent}; }}
-#SidebarFoot {{ color: {muted}; font-size: 8pt; }}
+#Sidebar {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 {panel}, stop:1 {bg});
+    border-right: 1px solid {border}; }}
+#Sidebar QPushButton {{ background: transparent; color: {muted}; text-align: left;
+    padding: {space_2}px {space_3}px;
+    min-height: 20px; border: 1px solid transparent; border-left: 3px solid transparent;
+    border-radius: {radius_control}px; font-weight: 600; }}
+#Sidebar QPushButton:hover {{ background: {hover}; color: {text}; border-color: {border}; }}
+#Sidebar QPushButton:checked {{ background: {sel}; color: {selected_text}; border: 1px solid {accent};
+    border-left: 3px solid {accent}; }}
+#Sidebar QPushButton:focus {{ border: 2px solid {accent}; }}
+#Sidebar[compact="true"] QPushButton {{ text-align: center; padding: 8px 3px; }}
+#SidebarFoot {{ color: {muted}; font-size: 8.5pt; }}
+#SidebarToggle {{ background: {card}; color: {muted}; }}
 
-#PageTitle {{ font-size: 17pt; font-weight: 700; }}
+#PageHeader {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 {panel}, stop:1 {bg});
+    border: 1px solid {border}; border-left: 3px solid {accent}; border-radius: {radius_panel}px; }}
+#PageTitle {{ font-size: 18pt; font-weight: 700; }}
 #PageSub, #Muted {{ color: {muted}; }}
+#PageSub {{ font-size: 9.5pt; }}
 #Explain {{ color: {muted}; font-size: 9pt; }}
-#BigValue {{ font-size: 18pt; font-weight: 700; color: {accent}; }}
+#BigValue {{ font-size: 19pt; font-weight: 700; color: {accent}; }}
 #Value {{ font-weight: 700; color: {accent}; }}
 #Warn {{ color: {warn}; }}
 #Danger {{ color: {danger}; font-weight: 600; }}
 #Ok {{ color: {ok}; font-weight: 600; }}
+#SectionKicker {{ color: {muted}; font-size: 8.5pt; font-weight: 700; }}
 
-QGroupBox {{ background: {card}; border: 1px solid {border}; border-radius: 10px; margin-top: 14px;
-    padding: 14px 12px 10px 12px; font-weight: 700; }}
-QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 6px; color: {accent}; }}
-#Card {{ background: {card}; border: 1px solid {border}; border-radius: 10px; }}
+QGroupBox {{ background: {card}; border: 1px solid {border}; border-radius: {radius_card}px;
+    margin-top: {space_4}px; padding: {space_3}px {space_3}px {space_2}px {space_3}px; font-weight: 700; }}
+QGroupBox::title {{ subcontrol-origin: margin; left: 14px; padding: 0 7px; color: {text}; }}
+#Card, #MetricCard {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 {card}, stop:1 {panel});
+    border: 1px solid {border}; border-radius: {radius_card}px; }}
+#MetricCard {{ border-top: 2px solid {accent}; }}
 
-QPushButton {{ background: {hover}; border: 1px solid {border}; border-radius: 7px; padding: 7px 14px;
-    font-weight: 600; }}
-QPushButton:hover {{ border-color: {accent}; }}
-QPushButton:disabled {{ color: {muted}; }}
-QPushButton#AccentBtn {{ background: {accent}; color: #ffffff; border: none; }}
-QPushButton#AccentBtn:hover {{ background: {accent2}; }}
-QPushButton#DangerBtn {{ background: {danger}; color: #ffffff; border: none; }}
+QPushButton {{ background: {hover}; border: 1px solid {border}; border-radius: {radius_control}px;
+    padding: {space_2}px {space_3}px; min-height: {control_height}px; font-weight: 600; }}
+QPushButton:hover {{ background: {sel}; color: {selected_text}; border-color: {accent}; }}
+QPushButton:pressed {{ background: {panel}; }}
+QPushButton:disabled {{ background: {panel}; color: {muted}; border-color: {border}; }}
+QPushButton:focus {{ border: 2px solid {accent}; }}
+QPushButton#AccentBtn, QPushButton[variant="primary"] {{ background: {accent}; color: {accent_text}; border: 1px solid {accent}; }}
+QPushButton#AccentBtn:hover, QPushButton[variant="primary"]:hover {{ background: {accent2}; color: {accent2_text}; }}
+QPushButton#DangerBtn, QPushButton[variant="danger"] {{ background: {danger}; color: {danger_text}; border: 1px solid {danger}; }}
+QPushButton#DangerBtn:hover, QPushButton[variant="danger"]:hover {{ border: 2px solid {text}; }}
+QPushButton#QuietBtn {{ background: transparent; border-color: transparent; color: {muted}; }}
+QPushButton#QuietBtn:hover {{ background: {hover}; color: {text}; }}
+QPushButton#SplashHide {{ padding: 3px 9px; min-height: 20px; }}
 
-QLineEdit, QComboBox, QSpinBox {{ background: {panel}; border: 1px solid {border}; border-radius: 7px;
-    padding: 6px 8px; }}
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border-color: {accent}; }}
-QComboBox QAbstractItemView {{ background: {panel}; selection-background-color: {sel}; border: 1px solid {border}; }}
+QLineEdit, QComboBox, QSpinBox {{ background: {panel}; border: 1px solid {border}; border-radius: {radius_control}px;
+    padding: {space_1}px {space_2}px; min-height: 24px; selection-background-color: {sel}; }}
+QLineEdit:hover, QComboBox:hover, QSpinBox:hover {{ border-color: {muted}; }}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border: 2px solid {accent}; }}
+QComboBox QAbstractItemView {{ background: {panel}; selection-background-color: {sel};
+    selection-color: {selected_text}; border: 1px solid {border}; }}
+QCheckBox, QRadioButton {{ spacing: 8px; }}
 QCheckBox::indicator, QRadioButton::indicator {{ width: 16px; height: 16px; }}
+QCheckBox:focus::indicator, QRadioButton:focus::indicator {{ border: 2px solid {accent}; }}
 
 QTableWidget, QTreeWidget {{ background: {card}; alternate-background-color: {panel}; border: 1px solid {border};
-    border-radius: 8px; gridline-color: transparent; selection-background-color: {sel}; selection-color: {text}; }}
-QHeaderView::section {{ background: {panel}; color: {accent}; padding: 6px; border: none;
-    border-bottom: 1px solid {border}; font-weight: 700; }}
+    border-radius: {radius_control}px; gridline-color: transparent; selection-background-color: {sel};
+    selection-color: {selected_text}; }}
+QTableWidget:focus, QTreeWidget:focus {{ border: 2px solid {accent}; }}
+QTableWidget::item, QTreeWidget::item {{ padding: {space_1}px {space_2}px;
+    min-height: {table_row_height}px; border-bottom: 1px solid {border}; }}
+QTableWidget::item:hover, QTreeWidget::item:hover {{ background: {hover}; }}
+QTableWidget::item:selected, QTreeWidget::item:selected {{ background: {sel}; color: {text}; }}
+QHeaderView::section {{ background: {panel}; color: {text}; padding: 8px 7px; border: none;
+    border-bottom: 2px solid {border}; font-weight: 700; }}
+QHeaderView::section:hover {{ color: {accent}; background: {hover}; }}
+QHeaderView::section:checked {{ border-bottom-color: {accent}; }}
+QHeaderView::section:focus {{ border-bottom: 2px solid {accent}; }}
 QTableCornerButton::section {{ background: {panel}; border: none; }}
 
-QProgressBar {{ background: {panel}; border: 1px solid {border}; border-radius: 5px; height: 12px;
+QProgressBar {{ background: {panel}; border: 1px solid {border}; border-radius: 5px; height: 13px;
     text-align: center; font-size: 8pt; }}
 QProgressBar::chunk {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 {accent}, stop:1 {accent2});
     border-radius: 4px; }}
@@ -98,21 +173,24 @@ QSlider::sub-page:horizontal {{ background: {accent}; border-radius: 3px; }}
 QSlider::handle:horizontal {{ background: {text}; border: 2px solid {accent}; width: 14px; height: 14px;
     margin: -5px 0; border-radius: 8px; }}
 
-QScrollBar:vertical {{ background: transparent; width: 10px; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar::handle:vertical {{ background: {border}; border-radius: 5px; min-height: 30px; }}
-QScrollBar:horizontal {{ background: transparent; height: 10px; }}
+QScrollBar::handle:vertical:hover {{ background: {muted}; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
 QScrollBar::handle:horizontal {{ background: {border}; border-radius: 5px; min-width: 30px; }}
+QScrollBar::handle:horizontal:hover {{ background: {muted}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
-QMenu {{ background: {panel}; border: 1px solid {border}; padding: 4px; }}
-QMenu::item {{ padding: 6px 22px; border-radius: 4px; }}
-QMenu::item:selected {{ background: {sel}; }}
+QMenu {{ background: {panel}; border: 1px solid {border}; padding: 5px; }}
+QMenu::item {{ padding: {space_2}px {space_5}px; border-radius: 4px; }}
+QMenu::item:selected {{ background: {sel}; color: {selected_text}; }}
 QStatusBar {{ background: {panel}; color: {muted}; border-top: 1px solid {border}; }}
+QStatusBar::item {{ border: none; }}
 """
 
 
 def stylesheet(name: str) -> str:
-    return QSS.format(**THEMES.get(name, THEMES["Midnight Violet"]))
+    return QSS.format(**design_tokens(name))
 
 
 def palette(name: str) -> dict:
-    return THEMES.get(name, THEMES["Midnight Violet"])
+    return design_tokens(name)

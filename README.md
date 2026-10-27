@@ -1,18 +1,33 @@
-# TaskForge 2.3.0 Beta 1
+# TaskForge 2.4.0 Beta 1
 
-**Real beta release:** [Download v2.3.0-beta.1](https://github.com/QuasarLI/TaskForge/releases/tag/v2.3.0-beta.1) |
+**Real beta release:** [Download v2.4.0-beta.1](https://github.com/QuasarLI/TaskForge/releases/tag/v2.4.0-beta.1) |
 [Source repository](https://github.com/QuasarLI/TaskForge) | [Changelog](CHANGELOG.md)
 
 TaskForge is a Windows system control center and advanced process manager for live CPU/RAM monitoring, safe process
 inspection and controls, documented processor power diagnostics, and reversible paging-file guidance. It uses
 supported Windows APIs and commands, explains tradeoffs in plain language, and never applies tuning automatically.
 
-**Beta highlight:** the Processes page adds sortable process-tree context, a selected-process inspector, bounded
-CPU/working-set graphs, measured trim results, executable signature context, and explicit VirusTotal hash lookup.
-The dashboard now includes uptime and system-drive capacity; tray hover text rotates a short summary every 15 seconds
-and can be disabled in Settings.
-The tray icon itself stays static; Windows hover text is not a scrolling/animation surface, and TaskForge avoids
-constantly rewriting icons to conserve CPU and avoid distraction.
+## What changed in 2.4
+
+- **A more cohesive visual system:** shared spacing, surface, border, typography, and control tokens give the
+  dashboard, health, process, memory, CPU, startup, settings, and resources pages a consistent hierarchy. Theme
+  character remains intact across all ten palettes, including Matrix Green.
+- **Refined application shell:** clearer page context, tactile theme-aware navigation, saved compact navigation,
+  visible keyboard focus, accessible page names, and a smaller minimum window size for common laptop and scaled
+  displays.
+- **Calmer, clearer data views:** metric cards, process rows, tables, dialogs, status chips, and explanatory text
+  now share consistent spacing and selection states. Process updates still preserve the user's row order, scroll,
+  and selection instead of jumping around.
+- **A brief startup splash:** the familiar TaskForge icon is drawn from the same vector geometry as the executable
+  and tray icon. A single restrained bolt ignition and chrome light sweep stop after one pass; reduced-motion,
+  high-contrast, battery-saver, self-test, and tray-first launches use a static or suppressed path. Startup is never
+  held open to finish an animation.
+- **Accessibility and responsiveness:** keyboard focus is visible, accessible names identify navigation and status,
+  text uses DPI-aware point sizing, and compact navigation is available for narrower windows. Motion is bounded and
+  disabled when Windows accessibility or power preferences request it.
+
+This is a visual and interaction polish beta, not a feature rewrite. Existing monitoring, edition gates, licensing,
+process safeguards, VirusTotal privacy, settings backups, and restore behavior are retained.
 
 ## Editions
 
@@ -38,31 +53,27 @@ is needed or supported.
 - [TaskForge Supporter](https://quasarlabs3.gumroad.com/l/ncbdzb)
 - [TaskForge Pro](https://quasarlabs3.gumroad.com/l/uojwbi)
 
-## Safe tools and beginner guidance
+## Tools and beginner guidance
 
 - **RAM:** shows working set, private commit, cache, commit limit, kernel pools, and top consumers. Cached RAM is
-  explained as reusable rather than “wasted.” Working-set trim is explicitly temporary and never advertised as a
-  speed boost.
+  explained as reusable rather than “wasted.” Working-set trim is temporary and never advertised as a speed boost.
 - **Paging:** reads the same registry value as Windows, recommends a conservative size from RAM and observed peak
-  commit, backs up before writes, requires admin, and states when reboot is required. Windows-managed is the
-  sensible default.
+  commit, backs up before writes, requires admin, and states when reboot is required. Windows-managed is the sensible
+  default; Windows has no pagefile priority or speed-class setting.
 - **CPU:** reads live effective clock and per-core load; exposes documented `powercfg` settings for boost mode,
-  min/max state, EPP, parking, cooling, and C-states. Each setting states likely benefit, heat/battery risk,
-  sensible default, reversibility, and admin implications.
+  min/max state, EPP, parking, cooling, and C-states. Each setting explains likely benefit, risk, default,
+  reversibility, and admin implications.
 - **Processes:** sortable name/PID/parent/CPU/memory/thread/handle/user/path columns; selected-process details include
   status, architecture where Windows reports it, start time, parent, command line, and memory. Right-click for
   terminate/tree terminate, suspend/resume, working-set trim, efficiency mode, affinity, priority, path, copy, and
-  process search actions. Snapshot updates refresh values in place and do not continuously re-sort rows, so a
-  selection stays under the pointer; click a column header to sort deliberately. New processes append, and if a
-  process exits TaskForge preserves the scroll offset and other selected rows. Core Windows processes are guarded.
-  Each selected process gets a bounded 60-sample CPU and working-set history; graphs are in the inspector rather than
-  one chart per process.
-- **Executable risk context:** local SHA-256 and Authenticode status/publisher plus explainable path/signature signals.
-  These are context only—not malware detection. VirusTotal v3 is hash-only and opt-in; TaskForge never uploads a
-  process executable.
-- **Pagefile:** Windows has no pagefile priority or speed-class setting. TaskForge reports Windows usage/peak and
-  available volume media/bus/health metadata, offers a measured-workload recommendation, rejects removable/network
-  targets, backs up before changing Windows settings, and clearly explains reboot and crash-dump implications.
+  process search actions. Snapshot updates refresh values in place and do not continuously re-sort rows; click a
+  column header to sort deliberately. New processes append, and exits preserve the scroll offset and other selected
+  rows.
+- **Executable risk context:** local SHA-256 and Authenticode status/publisher plus explainable path/signature
+  signals. These are context only—not malware detection. VirusTotal v3 is hash-only and opt-in; TaskForge never
+  uploads a process executable.
+- **Dashboard and tray:** live resource cards, process context, uptime, drive capacity, and an optional rotating
+  tray tooltip. The tray icon stays static to avoid constant redraw and distraction.
 - **Themes:** Midnight Violet, OLED Black, Nord Frost, Ember Red, Matrix Green, Arctic Light, Cyber Ocean,
   Solarized Dusk, Royal Amethyst, and Slate Professional.
 
@@ -87,25 +98,24 @@ python run.py --selftest
 powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-`--selftest` opens every page, waits for real telemetry, and exits without changing the machine. The build produces
-four visibly named executables, checksums, a Windows zip, the app icon, and a 1200x675 Gumroad cover:
+`--selftest` opens every page, waits for real telemetry, and exits without changing the machine or showing the
+splash. The build creates four production editions and a separate, unmistakably watermarked owner-only Pro test
+build. The test binary and ZIP are local evaluation files only and must never be distributed.
 
 ```text
-dist\TaskForge-2.3.0-beta.1\TaskForge-2.3.0-beta.1-Free.exe
-dist\TaskForge-2.3.0-beta.1\TaskForge-2.3.0-beta.1-Free-with-Ads.exe
-dist\TaskForge-2.3.0-beta.1\TaskForge-2.3.0-beta.1-Supporter.exe
-dist\TaskForge-2.3.0-beta.1\TaskForge-2.3.0-beta.1-Pro.exe
-assets\taskforge-gumroad-matrix-cover.png
+dist\TaskForge-2.4.0-beta.1\TaskForge-2.4.0-beta.1-Free.exe
+dist\TaskForge-2.4.0-beta.1\TaskForge-2.4.0-beta.1-Free-with-Ads.exe
+dist\TaskForge-2.4.0-beta.1\TaskForge-2.4.0-beta.1-Supporter.exe
+dist\TaskForge-2.4.0-beta.1\TaskForge-2.4.0-beta.1-Pro.exe
+dist\TaskForge-2.4.0-beta.1\TaskForge-2.4.0-beta.1-UNLOCKED-BETA-TEST-NOT-FOR-DISTRIBUTION.exe
+dist\TaskForge-2.4.0-beta.1-Packages\
+dist\TaskForge-2.4.0-beta.1-Packages\TaskForge-2.4.0-beta.1-UNLOCKED-BETA-TEST-NOT-FOR-DISTRIBUTION.zip
+dist\TaskForge-2.4.0-beta.1-Packages\SHA256SUMS.txt
 ```
 
-Upload the local Supporter and Pro executables to their matching Gumroad products. Do not upload or enter seller
-credentials into TaskForge. Before publishing paid files, confirm Gumroad still accepts the documented
-`POST https://api.gumroad.com/v2/licenses/verify` fields `product_permalink`, `license_key`, and
-`increment_uses_count`. Current Gumroad products require their product IDs rather than permalinks. The production
-build requires `TASKFORGE_GUMROAD_SUPPORTER_PRODUCT_ID` and `TASKFORGE_GUMROAD_PRO_PRODUCT_ID` to be present in the
-build environment (the release workflow reads the matching non-secret GitHub Actions repository variables). If
-either is missing, `build.ps1` stops before producing binaries rather than creating paid packages that cannot
-activate. The binaries still remain locked until a customer enters a matching valid key.
+Upload only the production Supporter and Pro packages to their matching Gumroad products. Do not upload or enter
+seller credentials into TaskForge. The production paid binaries contain the configured product IDs but remain
+locked until a customer enters a matching valid license.
 
 ## Releases and Sigstore
 
@@ -114,17 +124,16 @@ self-test, produces Free and Free-with-Ads ZIPs, generates SHA-256 checksums, cr
 GitHub OIDC, attests build provenance, and publishes those ZIPs as a prerelease. Supporter/Pro packages are built
 and keylessly signed by the separate private [TaskForge-Distribution](https://github.com/QuasarLI/TaskForge-Distribution)
 workflow, verified against its exact GitHub Actions identity, and retained as a private Actions artifact for seven
-days. They are not attached to the public release. The four-edition local build script also produces convenient
-unsigned local ZIPs; for Gumroad upload, use the signed Supporter/Pro ZIPs from the private pipeline.
+days. They are not attached to the public release.
 
 Verify a downloaded file after installing `cosign`:
 
 ```powershell
-cosign verify-blob TaskForge-2.3.0-beta.1-Free.zip `
-  --bundle TaskForge-2.3.0-beta.1-Free.zip.sigstore.json `
+cosign verify-blob TaskForge-2.4.0-beta.1-Free.zip `
+  --bundle TaskForge-2.4.0-beta.1-Free.zip.sigstore.json `
   --certificate-identity-regexp "https://github.com/QuasarLI/TaskForge/.github/workflows/release.yml@refs/tags/v.*" `
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-Get-FileHash TaskForge-2.3.0-beta.1-Free.zip -Algorithm SHA256
+Get-FileHash TaskForge-2.4.0-beta.1-Free.zip -Algorithm SHA256
 ```
 
 ## Safety and source licensing

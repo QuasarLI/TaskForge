@@ -3,12 +3,13 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 
 
-def render(size: int = 256, accent="#8b5cf6", accent2="#22d3ee") -> QPixmap:
-    pm = QPixmap(size, size)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
+def paint_icon(p: QPainter, rect: QRectF, accent="#8b5cf6", accent2="#22d3ee"):
+    """Paint the canonical icon geometry into any square or rectangular target."""
+    p.save()
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    size = min(rect.width(), rect.height())
     s = size / 256.0
+    p.translate(rect.x() + (rect.width() - size) / 2, rect.y() + (rect.height() - size) / 2)
 
     grad = QLinearGradient(0, 0, size, size)
     grad.setColorAt(0, QColor(accent))
@@ -40,6 +41,15 @@ def render(size: int = 256, accent="#8b5cf6", accent2="#22d3ee") -> QPixmap:
     p.setBrush(QBrush(bgrad))
     p.setPen(QPen(QColor(255, 255, 255, 200), 3 * s))
     p.drawPath(path)
+
+    p.restore()
+
+
+def render(size: int = 256, accent="#8b5cf6", accent2="#22d3ee") -> QPixmap:
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    paint_icon(p, QRectF(0, 0, size, size), accent, accent2)
     p.end()
     return pm
 

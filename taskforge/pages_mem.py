@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QButtonGroup, QComboBox, QGridLa
 from . import editions, pagefile, procman
 from .procman import OpError
 from .util import fmt_bytes, is_admin
-from .widgets import NumItem, bar, confirm, explain, page_header, run_async
+from .widgets import NumItem, bar, confirm, explain, page_header, page_layout, run_async
 
 
 class MemoryPage(QWidget):
@@ -29,7 +29,7 @@ class MemoryPage(QWidget):
         body = QWidget()
         scroll.setWidget(body)
         lay = QVBoxLayout(body)
-        lay.setContentsMargins(22, 18, 22, 12)
+        page_layout(lay)
         lay.addWidget(page_header("Memory", "Where your RAM is going, who is using it, and how the paging file "
                                             "backs it up. All numbers are live from Windows."))
 
