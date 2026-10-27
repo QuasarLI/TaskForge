@@ -11,8 +11,13 @@ $requiredProductIds = @(
 if ($requiredProductIds | Where-Object { [string]::IsNullOrWhiteSpace($_) }) {
   throw 'Set both TASKFORGE_GUMROAD_SUPPORTER_PRODUCT_ID and TASKFORGE_GUMROAD_PRO_PRODUCT_ID before building all production editions.'
 }
-$release = Join-Path $PSScriptRoot "dist\TaskForge-$version"
-$packages = Join-Path $PSScriptRoot "dist\TaskForge-$version-Packages"
+$outputRoot = $env:TASKFORGE_OUTPUT_ROOT
+if ([string]::IsNullOrWhiteSpace($outputRoot)) {
+  $outputRoot = Join-Path $PSScriptRoot "dist"
+}
+New-Item -ItemType Directory -Force $outputRoot | Out-Null
+$release = Join-Path $outputRoot "TaskForge-$version"
+$packages = Join-Path $outputRoot "TaskForge-$version-Packages"
 $buildRoot = Join-Path $env:TEMP "TaskForgeBuild\$version"
 if ((Test-Path -LiteralPath $release) -or (Test-Path -LiteralPath $packages) -or
     (Test-Path -LiteralPath $buildRoot)) {
