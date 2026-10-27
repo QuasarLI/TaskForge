@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.4.0-beta.1 - 2026-10-24
+
+- Established shared theme-aware spacing, typography, surface, control, table, selection, and keyboard-focus tokens
+  for consistent hierarchy across all application pages and all ten themes.
+- Refined the application shell with page context, compact persistent navigation, keyboard shortcuts, accessible
+  names, tactile sidebar states, and a smaller minimum window size for scaled and compact displays.
+- Improved dashboard cards, process-table readability, status states, and consistent page spacing while preserving
+  stable process selection and scroll behavior.
+- Added a short, non-modal startup splash that reuses the official icon's vector geometry. Its one-shot bolt
+  ignition and polished chrome light sweep stop after one pass and never delay main-window display.
+- Added static splash behavior for reduced-motion, Windows high-contrast, battery-saver, self-test, and tray-first
+  startup, plus a clear owner-test watermark and startup failure escape.
+- Deferred startup-entry enumeration until after the main window can render and showed an explicit loading state.
+- Added theme-token, splash-stage, motion-policy, reduced-motion, test-watermark, startup suppression, and failure
+  message coverage without changing host settings or requiring live services.
+- Preserved existing edition gates, licensing, privacy, process safety, VirusTotal boundaries, backups, and restore.
+
+`v2.4.0-beta.1` is a real prerelease for early evaluation. Public packages are Free and Free with Ads; paid upload
+packages and the unlocked owner test build remain separate from the public release.
+
 ## 2.3.0-beta.1 - 2026-10-24
 
 - Reworked Processes into a sortable, filterable advanced process list with parent PID, CPU, memory, handles, user,

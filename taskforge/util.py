@@ -93,6 +93,7 @@ DEFAULT_SETTINGS = {
     "start_minimized": False,
     "tray_notice_shown": False,
     "tray_summary": True,
+    "sidebar_compact": None,
     "procexp_path": r"C:\Users\Inv11\Downloads\ProcessExplorer\procexp64.exe",
     "autoruns_path": r"C:\Users\Inv11\Downloads\Autoruns\Autoruns64.exe",
 }

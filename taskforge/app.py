@@ -14,25 +14,41 @@ from .page_health import HealthPage
 from .pages_mem import MemoryPage
 from .pages_proc import DashboardPage, ProcessesPage
 from .pages_sys import CpuPage, SettingsPage, StartupPage, build_oc_guide
+from .splash import StartupSplash, should_show_splash, startup_failure_message
 from .themes import palette, stylesheet
 from .util import Settings, is_admin, relaunch_as_admin
 from .widgets import Monitor, run_async, shutdown_workers, workers_running
 
 NAV = ["Dashboard", "System Health", "Processes", "Memory", "CPU & Turbo", "Overclocking Guide", "Startup",
        "Settings", "Edition & Resources"]
+NAV_SHORT = ["Home", "Health", "Proc", "RAM", "CPU", "Guide", "Start", "Prefs", "More"]
+NAV_CONTEXT = [
+    "Live overview · system pressure, capacity, and recent activity",
+    "System health · plain-language signals and safe next steps",
+    "Processes · live usage, selection, and protected controls",
+    "Memory · RAM consumers, commit, and paging guidance",
+    "CPU & Turbo · hardware information and supported power controls",
+    "Overclocking Guide · supported limits and vendor resources",
+    "Startup · review what launches with Windows",
+    "Settings · display, refresh, tray, and accessibility preferences",
+    "Edition & Resources · activation, privacy, and learning resources",
+]
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, startup_progress=None):
         super().__init__()
         self.settings = settings
+        self.startup_progress = startup_progress or (lambda _stage: None)
         self.really_quit = False
         self._tray_tip_index = 0
         self._next_tray_tip_at = 0
         self.setWindowTitle(f"{__app_name__} {editions.info()['name']} — System Control Center")
-        self.resize(1320, 860)
-        self.setMinimumSize(1050, 680)
+        self.resize(1280, 820)
+        self.setMinimumSize(900, 600)
+        self._sidebar_user_choice = self.settings.get("sidebar_compact")
 
+        self.startup_progress("Initializing system monitors")
         self.monitor = Monitor(settings.get("refresh_ms"))
         pal = palette(settings.get("theme"))
 
@@ -50,13 +66,23 @@ class MainWindow(QMainWindow):
 
         side = QFrame()
         side.setObjectName("Sidebar")
-        side.setFixedWidth(210)
+        side.setAccessibleName("Main navigation")
+        self.side = side
         sl = QVBoxLayout(side)
-        sl.setContentsMargins(0, 14, 0, 12)
+        sl.setContentsMargins(8, 12, 8, 12)
+        sl.setSpacing(4)
+        self.sidebar_toggle = QPushButton("‹  Compact")
+        self.sidebar_toggle.setObjectName("SidebarToggle")
+        self.sidebar_toggle.setToolTip("Use compact navigation")
+        self.sidebar_toggle.clicked.connect(self.toggle_sidebar)
+        sl.addWidget(self.sidebar_toggle)
         self.nav = []
         for i, name in enumerate(NAV):
             b = QPushButton(name)
             b.setCheckable(True)
+            b.setAccessibleName(name)
+            b.setToolTip(name)
+            b.setShortcut(f"Alt+{i + 1}")
             b.clicked.connect(lambda _c=False, i=i: self.go(i))
             sl.addWidget(b)
             self.nav.append(b)
@@ -64,9 +90,13 @@ class MainWindow(QMainWindow):
         foot = QLabel(f"{editions.info()['name']} • v{__version__}\nNo telemetry")
         foot.setObjectName("SidebarFoot")
         foot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        foot.setWordWrap(True)
+        foot.setToolTip(f"{editions.info()['name']} · TaskForge {__version__}\nNo telemetry")
+        self.sidebar_foot = foot
         sl.addWidget(foot)
         body.addWidget(side)
 
+        self.startup_progress("Preparing dashboard and process data")
         self.stack = QStackedWidget()
         st = self.status
         self.dashboard = DashboardPage(self.monitor, pal)
@@ -87,11 +117,16 @@ class MainWindow(QMainWindow):
         self.settings_page.interval_changed.connect(self.monitor.set_interval)
         self.monitor.updated.connect(self._header_update)
 
+        self.startup_progress("Restoring tray and preferences")
         self._tray()
+        self._set_sidebar_compact(self._sidebar_user_choice if self._sidebar_user_choice is not None
+                                  else self.width() < 1080)
         self.apply_theme(settings.get("theme"))
         self.go(0)
+        self.startup_progress("Ready")
         self.statusBar().showMessage("Ready" + ("" if is_admin() else " — running as standard user; some actions "
                                                                        "need “Restart as admin”."))
+        self.statusBar().setAccessibleName("TaskForge status and action messages")
         run_async(self, sysinfo.hardware_inventory, on_done=self._inventory, on_fail=lambda _m: None)
         QTimer.singleShot(50, self.monitor.tick)
 
@@ -99,10 +134,11 @@ class MainWindow(QMainWindow):
     def _header(self):
         h = QFrame()
         h.setObjectName("Header")
-        h.setFixedHeight(64)
+        h.setFixedHeight(72)
         lay = QHBoxLayout(h)
         lay.setContentsMargins(16, 8, 16, 8)
         self.logo = QLabel()
+        self.logo.setAccessibleName("TaskForge")
         lay.addWidget(self.logo)
         tv = QVBoxLayout()
         tv.setSpacing(0)
@@ -110,6 +146,8 @@ class MainWindow(QMainWindow):
         t.setObjectName("HeaderTitle")
         s = QLabel("System Control Center")
         s.setObjectName("HeaderSub")
+        s.setAccessibleName("Current page context")
+        self.header_context = s
         tv.addWidget(t)
         tv.addWidget(s)
         lay.addLayout(tv)
@@ -120,6 +158,7 @@ class MainWindow(QMainWindow):
             lay.addWidget(c)
         admin = QLabel("ADMIN" if is_admin() else "STANDARD USER")
         admin.setObjectName("ChipAdmin" if is_admin() else "ChipUser")
+        admin.setAccessibleName("Administrator privileges" if is_admin() else "Standard user privileges")
         lay.addSpacing(10)
         lay.addWidget(admin)
         if not is_admin():
@@ -161,8 +200,38 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(i)
         for j, b in enumerate(self.nav):
             b.setChecked(i == j)
+            b.setAccessibleName(f"{NAV[j]}, current page" if i == j else NAV[j])
+        self.header_context.setText(NAV_CONTEXT[i])
         if self.monitor.last:
             self.monitor.updated.emit(self.monitor.last)
+
+    def toggle_sidebar(self):
+        compact = not self.side.property("compact")
+        self._sidebar_user_choice = compact
+        self.settings.set("sidebar_compact", compact)
+        self._set_sidebar_compact(compact)
+
+    def _set_sidebar_compact(self, compact):
+        compact = bool(compact)
+        self.side.setProperty("compact", compact)
+        self.side.setFixedWidth(92 if compact else 212)
+        self.sidebar_toggle.setText("›  Expand" if compact else "‹  Compact")
+        self.sidebar_toggle.setToolTip("Expand navigation" if compact else "Use compact navigation")
+        self.sidebar_toggle.setAccessibleName("Expand main navigation" if compact else "Compact main navigation")
+        for i, button in enumerate(self.nav):
+            button.setText(NAV_SHORT[i] if compact else NAV[i])
+            button.setToolTip(NAV[i])
+            button.setAccessibleName(f"{NAV[i]}, current page" if button.isChecked() else NAV[i])
+        self.sidebar_foot.setText(f"{editions.info()['name']}\nv{__version__}" if compact else
+                                  f"{editions.info()['name']} • v{__version__}\nNo telemetry")
+        self.side.style().unpolish(self.side)
+        self.side.style().polish(self.side)
+        self.side.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "side") and self._sidebar_user_choice is None:
+            self._set_sidebar_compact(self.width() < 1080)
 
     def apply_theme(self, name):
         pal = palette(name)
@@ -247,8 +316,29 @@ def main():
     app.setApplicationName(__app_name__)
     app.setApplicationVersion(__version__)
     app.setQuitOnLastWindowClosed(False)
-    settings = Settings()
-    win = MainWindow(settings)
+    splash = None
+    stage = "Loading settings and theme"
+    try:
+        settings = Settings()
+        background = "--background" in sys.argv
+        tray_available = QSystemTrayIcon.isSystemTrayAvailable()
+        start_hidden = (settings.get("start_minimized") or background) and tray_available
+        show_splash = should_show_splash(settings, sys.argv, tray_available)
+        if show_splash:
+            splash = StartupSplash(settings.get("theme"), editions.is_test_build())
+            app.setStyleSheet(stylesheet(settings.get("theme")))
+            splash.set_theme(settings.get("theme"))
+            splash.show()
+            app.processEvents()
+            splash.set_stage("Loading settings and theme")
+        win = MainWindow(settings, splash.set_stage if splash else None)
+    except Exception as exc:
+        if splash:
+            splash.stop_animation()
+            splash.close()
+            stage = splash.status.text()
+        QMessageBox.critical(None, "TaskForge could not start", startup_failure_message(stage, exc))
+        return 1
     app.aboutToQuit.connect(lambda: (win.monitor.timer.stop(), shutdown_workers(20000)))
     if "--selftest" in sys.argv:
         return _selftest(app, win)
@@ -256,10 +346,15 @@ def main():
         icon.render(256).save(sys.argv[sys.argv.index("--icon-out") + 1], "PNG")
         return 0
 
-    if settings.get("start_minimized") and QSystemTrayIcon.isSystemTrayAvailable():
+    if start_hidden:
         win.hide()
     else:
         win.show()
+    if splash:
+        if not start_hidden:
+            app.processEvents()
+        splash.stop_animation()
+        splash.close()
     return app.exec()
 
 

@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMessa
 
 from . import editions, pagefile
 from .util import app_data_dir, fmt_bytes, open_path, run
-from .widgets import explain, page_header, run_async
+from .widgets import explain, page_header, page_layout, run_async
 
 
 class HealthPage(QWidget):
@@ -24,7 +24,7 @@ class HealthPage(QWidget):
         body = QWidget()
         scroll.setWidget(body)
         lay = QVBoxLayout(body)
-        lay.setContentsMargins(22, 18, 22, 12)
+        page_layout(lay)
         lay.addWidget(page_header("System Health", "A plain-language snapshot of current pressure and safe next steps. "
                                                   "TaskForge observes only; it never tunes automatically."))
 

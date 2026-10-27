@@ -2,6 +2,8 @@
 
 TaskForge collects no analytics or telemetry and includes no tracking SDK. Settings, change backups, diagnostics,
 and paid activation state stay under the current Windows user's `%APPDATA%\TaskForge` directory.
+The startup splash performs no network requests and shows only local startup status. It is suppressed for
+self-test, background, and tray-first launches; its short animation never delays the application window.
 
 Supporter and Pro contact Gumroad only when the user explicitly clicks **Activate**. The customer-entered key is
 posted over HTTPS to Gumroad's license verification endpoint, never printed or logged, and the local record is

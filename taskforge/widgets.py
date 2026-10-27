@@ -12,6 +12,15 @@ from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMessageBox, QProgress
 from . import procman, sysinfo
 from .procman import ProcessSampler
 
+PAGE_MARGINS = (24, 20, 24, 16)
+PAGE_SPACING = 14
+
+
+def page_layout(layout):
+    """Apply the shared page rhythm to top-level page content layouts."""
+    layout.setContentsMargins(*PAGE_MARGINS)
+    layout.setSpacing(PAGE_SPACING)
+
 
 class Worker(QThread):
     """Run a callable off the UI thread."""
@@ -128,7 +137,8 @@ class Sparkline(QWidget):
         self.data = []
         self.color = QColor(color)
         self.maximum = maximum
-        self.setMinimumHeight(54)
+        self.setMinimumHeight(48)
+        self.setAccessibleName("Recent metric history")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_color(self, c):
@@ -146,16 +156,17 @@ class Sparkline(QWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = self.width(), self.height() - 2
+        left, top, right, bottom = 2, 3, 2, 3
+        w, h = self.width() - left - right, self.height() - top - bottom
         mx = max(self.maximum, max(self.data) or 1)
         step = w / (len(self.data) - 1)
         path = QPainterPath()
         for i, v in enumerate(self.data):
-            x, y = i * step, h - (v / mx) * (h - 4) + 1
+            x, y = left + i * step, top + h - (v / mx) * (h - 4)
             path.moveTo(x, y) if i == 0 else path.lineTo(x, y)
         fill = QPainterPath(path)
-        fill.lineTo(w, h + 2)
-        fill.lineTo(0, h + 2)
+        fill.lineTo(left + w, top + h)
+        fill.lineTo(left, top + h)
         fill.closeSubpath()
         g = QLinearGradient(0, 0, 0, h)
         c1, c2 = QColor(self.color), QColor(self.color)
@@ -172,15 +183,19 @@ class Sparkline(QWidget):
 class MetricCard(QFrame):
     def __init__(self, title, color="#8b5cf6"):
         super().__init__()
-        self.setObjectName("Card")
+        self.setObjectName("MetricCard")
+        self.setAccessibleName(title)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setContentsMargins(16, 13, 16, 12)
+        lay.setSpacing(5)
         self.title = QLabel(title)
         self.title.setObjectName("Muted")
         self.value = QLabel("-")
         self.value.setObjectName("BigValue")
+        self.value.setAccessibleName(f"{title} current value")
         self.sub = QLabel("")
         self.sub.setObjectName("Explain")
+        self.sub.setWordWrap(True)
         self.spark = Sparkline(color)
         lay.addWidget(self.title)
         lay.addWidget(self.value)
@@ -189,14 +204,19 @@ class MetricCard(QFrame):
 
 
 def page_header(title, subtitle):
-    w = QWidget()
+    w = QFrame()
+    w.setObjectName("PageHeader")
+    w.setAccessibleName(f"{title} page heading")
     lay = QVBoxLayout(w)
-    lay.setContentsMargins(0, 0, 0, 6)
+    lay.setContentsMargins(17, 12, 17, 12)
+    lay.setSpacing(4)
     t = QLabel(title)
     t.setObjectName("PageTitle")
+    t.setAccessibleName(title)
     s = QLabel(subtitle)
     s.setObjectName("PageSub")
     s.setWordWrap(True)
+    s.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     lay.addWidget(t)
     lay.addWidget(s)
     return w
@@ -207,6 +227,7 @@ def explain(text):
     lbl.setObjectName("Explain")
     lbl.setWordWrap(True)
     lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    lbl.setAccessibleName(text[:180])
     return lbl
 
 

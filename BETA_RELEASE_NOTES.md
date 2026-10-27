@@ -1,32 +1,32 @@
-# TaskForge 2.3.0 Beta 1
+# TaskForge 2.4.0 Beta 1
 
-TaskForge v2.3.0-beta.1 is a real prerelease for early evaluation as an Advanced Task Manager / process explorer.
+TaskForge v2.4.0-beta.1 is a real prerelease focused on a substantial GUI polish pass while preserving the ten-theme
+identity, edition model, v2.3 process tooling, privacy boundaries, and safe Windows controls.
 
-## Highlights
+## What changed
 
-- Processes adds sortable/filterable parent/process context, inspector details, bounded CPU/working-set history,
-  process comparison and measured trim results. Critical process safeguards and explicit confirmations remain.
-- Local SHA-256, Authenticode publisher/status and location context help users investigate without pretending to
-  detect malware.
-- VirusTotal reports are optional, hash-only, and require explicit user action. The executable is never uploaded;
-  API keys are stored with Windows DPAPI.
-- Pagefile tools reject removable/network destinations, display volume metadata when Windows provides it, and
-  explain that Windows offers no user-settable pagefile priority or speed class.
-- Firmware placeholders are replaced with clear "Not reported by firmware" labels; dashboard and tray summaries
-  provide uptime, storage and process context.
-- Existing System Health, battery/energy reporting, Pro redacted snapshots, all ten themes, edition safeguards and
-  reversible settings remain in place.
+- Unified page spacing, type hierarchy, cards, buttons, tables, dialogs, status chips, focus states, and selected-row
+  contrast through shared theme-aware design tokens.
+- Refined the shell with page context, compact persistent navigation, keyboard shortcuts, accessible names, clearer
+  focus and hover states, and a smaller minimum window size for common scaled displays.
+- Improved dashboard metric cards and table readability without changing process sampling order, selection, or
+  scroll behavior.
+- Added a brief startup splash drawn from the existing TaskForge icon geometry. The bolt ignition and neutral
+  chrome reflection run once, then settle; reduced-motion, high-contrast, battery-saver, self-test, and tray-first
+  startup paths avoid motion or suppress the splash. Startup is never delayed for the animation.
+- Deferred startup-list enumeration until after the main window can render, and added a visible loading state.
+- Kept monitoring, process safeguards, DPAPI-protected license and VirusTotal secrets, Gumroad product matching,
+  edition gates, and reversible power/pagefile behavior intact.
 
-TaskForge is still not kernel-level Process Explorer parity: DLL/handle-object trees, reliable service mapping,
-GPU/network per-process graphs, process dumps and service management are not included in this beta.
+This is a user-interface and interaction polish beta, not a feature rewrite or a claim of full Task Manager /
+Process Explorer parity. Known feature gaps remain listed in README.
 
 ## Editions and verification
 
 The GitHub prerelease contains Free and Free with Ads ZIP packages, their SHA-256 manifest, Sigstore keyless bundles,
-and GitHub build provenance. Supporter and Pro ZIPs are built and keylessly signed by the separate private
+and GitHub build provenance. Supporter and Pro packages are built and signed by the separate private
 TaskForge-Distribution workflow, verified against its exact GitHub Actions identity, and retained as a private
-Actions artifact for seven days. They are not attached to the public release. Use the private signed ZIPs for
-Gumroad uploads.
+Actions artifact. They are not attached to the public release.
 
 The separate `UNLOCKED-BETA-TEST-NOT-FOR-DISTRIBUTION` Pro test build and ZIP are owner-only evaluation files.
 Never upload them to Gumroad or distribute them.

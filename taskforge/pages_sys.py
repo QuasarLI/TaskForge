@@ -5,7 +5,7 @@ import subprocess
 import webbrowser
 import winreg
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QGridLayout, QGroupBox,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
                              QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDialo
 from . import __version__, editions, power, sysinfo
 from .themes import THEMES
 from .util import app_data_dir, backup_dir, fmt_bytes, is_admin, open_path
-from .widgets import bar, confirm, explain, page_header, run_async
+from .widgets import bar, confirm, explain, page_header, page_layout, run_async
 
 
 def scrolled(widget_builder):
@@ -26,7 +26,7 @@ def scrolled(widget_builder):
     sc.setWidget(body)
     outer.addWidget(sc)
     lay = QVBoxLayout(body)
-    lay.setContentsMargins(22, 18, 22, 12)
+    page_layout(lay)
     widget_builder(lay)
     lay.addStretch()
     return page
@@ -46,7 +46,7 @@ class CpuPage(QWidget):
         body = QWidget()
         sc.setWidget(body)
         lay = QVBoxLayout(body)
-        lay.setContentsMargins(22, 18, 22, 12)
+        page_layout(lay)
         lay.addWidget(page_header("CPU & Turbo", "Processor details and every turbo/power-management knob Windows "
                                                  "exposes through documented power-plan settings. Hover any control "
                                                  "for details; every change is backed up and reversible."))
@@ -508,7 +508,7 @@ class StartupPage(QWidget):
         super().__init__()
         self.settings = settings
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(22, 18, 22, 12)
+        page_layout(lay)
         lay.addWidget(page_header("Startup", "Programs that launch when you sign in. Fewer startup apps = faster boot "
                                              "and more free RAM. Read-only here; use the buttons to change them safely."))
         row = QHBoxLayout()
@@ -534,7 +534,9 @@ class StartupPage(QWidget):
         lay.addWidget(self.table, 1)
         lay.addWidget(explain("Autoruns (Sysinternals) additionally shows services, scheduled tasks, drivers, shell "
                               "extensions and more. Disable rather than delete entries so you can undo."))
-        self.load()
+        self.table.setRowCount(1)
+        self.table.setItem(0, 0, QTableWidgetItem("Loading startup entries…"))
+        QTimer.singleShot(0, self.load)
 
     def load(self):
         items = read_startup()

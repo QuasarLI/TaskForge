@@ -6,9 +6,14 @@ import urllib.error
 from datetime import datetime
 from unittest import mock
 
-from taskforge import editions, licensing, pagefile, procman, sysinfo, virustotal
+from taskforge import __version__, editions, licensing, pagefile, procman, sysinfo, virustotal
 from taskforge.page_resources import ADS
-from taskforge.themes import THEMES
+from taskforge.themes import THEMES, TOKENS, contrast_foreground, design_tokens, stylesheet
+from taskforge.widgets import PAGE_MARGINS, PAGE_SPACING
+from taskforge.splash import (ANIMATION_DURATION_MS, STAGES, StartupSplash, animation_enabled,
+                              should_show_splash, startup_failure_message)
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QImage
 
 
 class Response:
@@ -132,6 +137,87 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual({url for _, _, url in ADS}, approved)
         self.assertEqual(len(THEMES), 10)
         self.assertIn("Matrix Green", THEMES)
+
+    def test_theme_system_has_shared_layout_and_accessible_states(self):
+        self.assertEqual(PAGE_MARGINS, (24, 20, 24, 16))
+        self.assertEqual(PAGE_SPACING, 14)
+        self.assertEqual(TOKENS["control_height"], 34)
+        self.assertEqual(contrast_foreground("#ffffff"), "#111827")
+        self.assertEqual(contrast_foreground("#000000"), "#ffffff")
+        for name, colors in THEMES.items():
+            with self.subTest(theme=name):
+                tokens = design_tokens(name)
+                self.assertEqual(tokens["accent"], colors["accent"])
+                self.assertIn(tokens["accent_text"], ("#111827", "#ffffff"))
+                css = stylesheet(name)
+                for selector in ("#PageHeader", "#MetricCard", "QPushButton:focus",
+                                 "QLineEdit:focus", "QTableWidget::item:selected",
+                                 "#Sidebar[compact=\"true\"]"):
+                    self.assertIn(selector, css)
+                self.assertNotIn("{accent}", css)
+
+    def test_splash_stages_motion_startup_policy_and_failure_escape(self):
+        self.assertEqual(STAGES, (
+            "Loading settings and theme",
+            "Initializing system monitors",
+            "Preparing dashboard and process data",
+            "Restoring tray and preferences",
+            "Ready",
+        ))
+        self.assertLessEqual(ANIMATION_DURATION_MS, 900)
+        settings = {"start_minimized": True}
+        self.assertFalse(should_show_splash(settings, [], tray_available=True))
+        self.assertTrue(should_show_splash(settings, [], tray_available=False))
+        self.assertFalse(should_show_splash({}, ["--background"], tray_available=True))
+        self.assertFalse(should_show_splash({}, ["--selftest"], tray_available=True))
+        self.assertTrue(animation_enabled())
+        self.assertFalse(animation_enabled(reduced_motion=True))
+        self.assertFalse(animation_enabled(high_contrast=True))
+        self.assertFalse(animation_enabled(battery_saver=True))
+        message = startup_failure_message(STAGES[2], RuntimeError("view initialization"))
+        self.assertIn("try again", message)
+        self.assertIn(STAGES[2], message)
+        self.assertIn("view initialization", message)
+
+        app = QApplication.instance() or QApplication([])
+        splash = StartupSplash("Matrix Green", test_build=True, reduced_motion=True)
+        try:
+            self.assertFalse(splash.animate)
+            self.assertFalse(splash._animation_timer.isActive())
+            self.assertIn("NOT FOR DISTRIBUTION", splash.watermark.text())
+            self.assertEqual(splash.progress.maximum(), len(STAGES) - 1)
+            for stage in STAGES:
+                splash.set_stage(stage)
+                self.assertEqual(splash.status.text(), stage)
+            self.assertFalse(splash._long_startup_timer.isActive())
+            self.assertFalse(splash._animation_timer.isActive())
+        finally:
+            splash.stop_animation()
+            splash.close()
+            app.processEvents()
+        animated = StartupSplash("Matrix Green", reduced_motion=False)
+        try:
+            animated._motion.start()
+            image = QImage(animated.size(), QImage.Format.Format_ARGB32)
+            animated.render(image)
+            self.assertTrue(animated.animate)
+            self.assertFalse(animated._animation_timer.isActive())
+        finally:
+            animated.stop_animation()
+            animated.close()
+
+    def test_beta_version_and_owner_test_packaging_are_explicit(self):
+        root = os.path.dirname(os.path.dirname(__file__))
+        self.assertEqual(__version__, "2.4.0-beta.1")
+        with open(os.path.join(root, "build.ps1"), encoding="utf-8") as handle:
+            build_script = handle.read()
+        self.assertIn("$version = '2.4.0-beta.1'", build_script)
+        self.assertIn("UNLOCKED-BETA-TEST-NOT-FOR-DISTRIBUTION", build_script)
+        self.assertIn("test_build=$true", build_script)
+        with open(os.path.join(root, ".github", "workflows", "release.yml"), encoding="utf-8") as handle:
+            release_workflow = handle.read()
+        self.assertIn('$version = "2.4.0-beta.1"', release_workflow)
+        self.assertIn('"Free", "Free-with-Ads"', release_workflow)
 
     def test_pagefile_dry_run(self):
         self.assertEqual(pagefile.build_line("system", "C"), r"C:\pagefile.sys 0 0")
